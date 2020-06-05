@@ -1,161 +1,94 @@
-# Explainers
-
-## Introduction
-
-Your explainer is a living document that describes the current state of your proposed web platform feature, or collection of features.
-
-In the early phases of design, this may be as simple as a collection of goals and a sketch of one possible solution.
-
-As your work progresses, the explainer can help facilitate multi-stakeholder discussion and consensus-building by making clear:
-
-- the user-facing problem which needs to be solved;
-- the proposed approach to solving the problem;
-- the way the proposed solution may be used in practice to address the intended use cases, via example code;
-- any other venues (such as mailing list, pull requests or issue threads external to the location of the explainer) where the reader may catch up on discussions regarding the proposed feature or features;
-- the alternatives which have already been considered and why they were not chosen;
-- accessibility, security and privacy implications which have been considered as part of the design process.
-
-Once there is a reasonable amount of consensus on the approach and high-level design,
-the explainer can be used to guide spec writing,
-by serving as a high-level overview of the feature to be specified and the user need it serves.
-
-Once the spec is written and the feature is shipped,
-the explainer can then provide a basis for author-facing documentation of the new feature.
-
-## Examples of good explainers
-
-- [Service Workers](https://github.com/w3c/ServiceWorker/blob/master/explainer.md)
-- [`paymentRequest`](https://github.com/zkoch/paymentrequest/blob/gh-pages/docs/explainer.md)
-- [Web Share](https://github.com/WICG/web-share/blob/master/docs/explainer.md)
-- [Viewport API](https://github.com/WICG/ViewportAPI/blob/gh-pages/README.md)
-- [`EventListenerOptions`](https://github.com/WICG/EventListenerOptions/blob/gh-pages/explainer.md)
-- [Intersection Observer](https://github.com/w3c/IntersectionObserver/blob/master/explainer.md)
-
-## Tips for effective explainers:
-
-Since your explainer may be referred to by a range of stakeholders,
-not all of whom are likely to be highly motivated to spend a lot of time on it,
-you should always try to keep your explainer as brief and easy to read as possible.
-
-- Be clear about the **end-user** need, first and foremost.
-- Keep it as brief and "skimmable" as you possibly can.
-  - Writing succinctly is harder than writing at length. You might need to write a first draft, and then make one or more editing passes to cut down word count. This is a time investment, but will save time and energy for your readers.
-  - Use bulleted lists where possible.
-  - Draw attention to key points using **bold**. 
-  - Keep your paragraphs and sentences short. Paragraphs should contain one idea only, and likely shouldn't be more than a couple of sentences. Break up large paragraphs as much as possible.
-- Keep the language as simple as possible.
-  - Not all readers will always be fluent English speakers.
-  - Even if they are, they may be reading your explainer while doing three other things, with a headache and a looming deadline.
-  - Be kind to your readers, since you probably want them to be kind to you.
-- Wherever possible, use code examples rather than prose to "show" rather than "tell" your design.
-- If you can and if it serves the document, be generous with diagrams.
-  - A picture is, for most readers, much easier to process than a slab of text.
-  - Always provide text alternatives for readers who may not be able to see images.
-    - Simpler images may be described via an [image alt](https://webaim.org/techniques/alttext/#complex).
-    - More complex images may require a longer description in the form of a footnote or appendix to the document, linked immediately after the image, with a back-link to return to the section containing the image.
-- As your design evolves, keep track of and make a note of alternatives which have been considered, and your reasons for not choosing them.
-  - You undoubtedly had reasons not to choose those alternatives, but reviewers and other stakeholders may not have that context. Avoid redundant "what about [already-ruled out alternative]" type questions by explaining why those alternatives were ruled out.
-  - Direct readers to the appropriate participation forums, issue tracker, etc.
-
-## Explainer Template:
-
-# [Title]
+# Application History State
 
 ## Authors:
 
-- [Author 1]
-- [Author 2]
-- [etc.]
+- Alex Russell <slightlyoff@google.com>
+- Tom Wilkinson <twilkinson@google.com>
+
 
 ## Participate
-- [Issue tracker]
-- [Discussion forum]
+- [Issue tracker](https://github.com/slightlyoff/history_api/issues)
+- [Discussion forum](https://github.com/slightlyoff/history_api/issues)
 
-## Table of Contents [if the explainer is longer than one printed page]
-
-[You can generate a Table of Contents for markdown documents using a tool like [doctoc](https://github.com/thlorenz/doctoc).]
+## Table of Contents
 
 <!-- START doctoc generated TOC please keep comment here to allow auto update -->
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
 ## Introduction
 
-[The "executive summary" or "abstract".
-Explain in a few sentences what the goals of the project are,
-and a brief overview of how the solution works.
-This should be no more than 1-2 paragraphs.]
+Application Developers face a range of challenges when performing client-side updates to dynamic web apps including (but not limited to):
 
-## Goals [or Motivating Use Cases, or Scenarios]
+ - Lack of clarity on when to rely on base URL, query parameters, or hash parameters to represent "persistent" state
+ - Difficulty in serializing & sharing "UI state" separate from "application state"
+ - Complexity in capturing browser-initiated page unloading for [client-side routers](https://blog.risingstack.com/writing-a-javascript-framework-client-side-routing/)
+ - Tricky coordination problems between multiple page components which may each want to persist transient UI state but remain largely unaware of each other
+ - Difficulty in understanding one's location in, and predicting effects of chagnes to, the [HTML5 History API stack](https://developer.mozilla.org/en-US/docs/Web/API/History_API) due to potentially co-mingled origins
 
-[What is the **end-user need** which this project aims to address?]
+Taken together, these challenges create a "totalizing" effect in applications when client-side state management is introduced. Because a single router system must be responsible for so many aspects, and coordiate so many low-level details, it's challenging to create compatible solutions, or constrain code footprint whilst retinaining valuable properties such as lightweight progressive enhancement.
+
+Existing building blocks create subtle, but large, problems.
+
+The History [`pushState`](https://developer.mozilla.org/en-US/docs/Web/API/History/pushState) and [`replaceState`](https://developer.mozilla.org/en-US/docs/Web/API/History/replaceState) APIs provide a mechansim for passing a [cloneable](https://html.spec.whatwg.org/multipage/structured-data.html#structuredserializeinternal) JavaScript state object, which are returned to a page on change in state (usually via user action), however it is left as an exercise to the developer to map potentially different levels of application semantics into this API. It usually "feels wrong" to encode the state of an accordion component's open/close state in _either_ the [path](https://url.spec.whatwg.org/#dom-url-pathname) or [query parameters](https://url.spec.whatwg.org/#dom-url-searchparams), both of which are passed to servers and may have semantic meaning beyond UI state.
+
+URL [hashes](https://url.spec.whatwg.org/#dom-url-hash) are a reasonable next place to look for a solution as they are shareable and not meanignful to server applications by default, but [HTML already assigns meaning](https://html.spec.whatwg.org/multipage/browsing-the-web.html#scroll-to-fragid) to [hashes for anchor elements](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/a#Examples), creating potential conflicts. Fragments have also become a [potential XSS vector](https://medium.com/iocscan/dom-based-cross-site-scripting-dom-xss-3396453364fd), in part, because no safe parsing is provided by default. The [`hashchange`](https://developer.mozilla.org/en-US/docs/Web/API/Window/hashchange_event) event can allow components to be notified of state changes, but doesn't provide any semantic for location in stack history or meaningfully integrate into the [History API](https://developer.mozilla.org/en-US/docs/Web/API/History_API).
+
+This leaves application authors torn. Shareable UI state either requires out-of-band mechanisms for persistence, or overloading of URLs, unwanted server-side implications, or potential loss of state when folding information into History API state objects. And that is to say nothing of navigating the APIs themselves and their [various warts](https://github.com/whatwg/html/issues/2174).
+
+Lastly, it should be noted that these problems largely arise only when developers have _already_ exerted enough to control to prevent "normal" link navigations via `<a href="...">`. Naturally-constructed applications will want to progressively enhance anchors, but the current system prevents this, forcing developers to be vigilant to add very specific local event handlers -- or forego anchor elements, potentially harming accessiblity and adding complexity.
+
+## Goals
+
+We hope to enable application developers to:
+
+ - Easily express transient, shareable UI state separately from semantic navigation state
+ - Remove complexity and brittleness from responding to requests for state change via links _without_ full page reloads
+ - Reduce security concerns regarding UI state serialized to URLs
+ - Reduce conflicts with existing libraries for incremental adoption
 
 ## Non-goals
 
-[If there are "adjacent" goals which may appear to be in scope but aren't,
-enumerate them here. This section may be fleshed out as your design progresses and you encounter necessary technical and other trade-offs.]
+These proposals do not seek to:
 
-## [API 1]
+ - Add a full client-side router to the platform (although it should make these systems easier)
 
-[For each related element of the proposed solution - be it an additional JS method, a new object, a new element, a new concept etc., create a section which briefly describes it.]
 
-```js
-// Provide example code - not IDL - demonstrating the design of the feature.
+## Navigation Events
 
-// If this API can be used on its own to address a user need,
-// link it back to one of the scenarios in the goals section.
+Currently, client-side libraries need to override the browser's default navigation affordances by [globally hooking nominally unrelated events, e.g. `onclick`](https://github.com/vaadin/vaadin-router/blob/master/src/triggers/click.js#L107). This is [brittle](https://github.com/ReactTraining/react-router/blob/master/packages/react-router-dom/modules/Link.js#L43), as programmatic navigation (`window.location = ...`) can be missed, and may require explicit [decoration of elements to be handled within a system](https://angular.io/guide/router#add-the-router-outlet), complicating progressive enhancement.
 
-// If you need to show how to get the feature set up
-// (initialized, or using permissions, etc.), include that too.
-```
-
-[Where necessary, provide links to longer explanations of the relevant pre-existing concepts and API.
-If there is no suitable external documentation, you might like to provide supplementary information as an appendix in this document, and provide an internal link where appropriate.]
-
-[If this is already specced, link to the relevant section of the spec.]
-
-[If spec work is in progress, link to the PR or draft of the spec.]
-
-## [API 2]
-
-[etc.]
-
-## Key scenarios
-
-[If there are a suite of interacting APIs, show how they work together to solve the key scenarios described.]
-
-### Scenario 1
-
-[Description of the end-user scenario]
+To reduce this pain, we propose the cancelable `onbeforenavigate` event.
 
 ```js
-// Sample code demonstrating how to use these APIs to address that scenario.
+// Fired *before* window.onbeforeunload
+
+// TODO: should this be on `window.location`` instead?
+window.history.onbeforenavigate = (e) => {
+  // Cancel navigation; only available for same-origin navigations
+  e.preventDefault();
+  // TODO: decide how to map in SubmitEvent and formdata
+  console.log(e.url); // the destination URL; TODO: precident?
+};
 ```
 
-### Scenario 2
+## UI State Fragements
 
-[etc.]
-
-## Detailed design discussion
-
-### [Tricky design choice #1]
-
-[Talk through the tradeoffs in coming to the specific design point you want to make.]
+UI State Fragments build on the recently-launched Scroll-to-Text Fragment syntax.
 
 ```js
-// Illustrated with example code.
+
 ```
 
-[This may be an open question,
-in which case you should link to any active discussion threads.]
 
-### [Tricky design choice 2]
-
-[etc.]
 
 ## Considered alternatives
 
-[This should include as many alternatives as you can,
-from high level architectural decisions down to alternative naming choices.]
+TODO(slightlyoff): need to discuss:
+
+  - a global history manager router
+  - Direct changes to `pushState` and `replaceState`
+  -
+
 
 ### [Alternative 1]
 
@@ -166,24 +99,17 @@ and why you decided against it.]
 
 [etc.]
 
-## Stakeholder Feedback / Opposition
-
-[Implementors and other stakeholders may already have publicly stated positions on this work. If you can, list them here with links to evidence as appropriate.]
-
-- [Implementor A] : Positive
-- [Stakeholder B] : No signals
-- [Implementor C] : Negative
-
-[If appropriate, explain the reasons given by other implementors for their concerns.]
+## Open Design Questions
 
 ## References & acknowledgements
 
-[Your design will change and be informed by many people; acknowledge them in an ongoing way! It helps build community and, as we only get by through the contributions of many, is only fair.]
-
-[Unless you have a specific reason not to, these should be in alphabetical order.]
-
 Many thanks for valuable feedback and advice from:
 
-- [Person 1]
-- [Person 2]
-- [etc.]
+- Dima Voytenko
+- David Bokan
+- <TODO>
+
+Prior work in this area includes:
+
+ - Many, many client-side routing packages
+ - the [HTML5 History API](https://developer.mozilla.org/en-US/docs/Web/API/History_API) and associated [`hashchange` event](https://developer.mozilla.org/en-US/docs/Web/API/Window/hashchange_event)
