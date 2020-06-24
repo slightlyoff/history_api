@@ -19,14 +19,14 @@
 - [Goals](#goals)
 - [Non-goals](#non-goals)
 - [Navigation Events](#navigation-events)
-- [UI State Fragements](#ui-state-fragements)
+- [UI State Fragments](#ui-state-fragments)
 - [Same-Origin History Stack Introspection](#same-origin-history-stack-introspection)
 - [Considered alternatives](#considered-alternatives)
   - [A Global History Manager](#a-global-history-manager)
   - [Service Worker Navigation Events](#service-worker-navigation-events)
   - [Built-in Client-Side Routing](#built-in-client-side-routing)
 - [Open Design Questions](#open-design-questions)
-- [References & acknowledgements](#references--acknowledgements)
+- [References & acknowledgments](#references--acknowledgments)
 
 <!-- END doctoc generated TOC please keep comment here to allow auto update -->
 
@@ -40,17 +40,17 @@ Application Developers face a range of challenges when performing client-side up
  - Tricky coordination problems between multiple page components which may each want to persist transient UI state but remain largely unaware of each other
  - Difficulty in understanding one's location in, and predicting effects of chagnes to, the [HTML5 History API stack](https://developer.mozilla.org/en-US/docs/Web/API/History_API) due to potentially co-mingled origins
 
-Taken together, these challenges create a "totalizing" effect in applications when client-side state management is introduced. Because a single router system must be responsible for so many aspects, and coordiate so many low-level details, it's challenging to create compatible solutions, or constrain code footprint whilst retinaining valuable properties such as lightweight progressive enhancement.
+Taken together, these challenges create a "totalizing" effect in applications when client-side state management is introduced. Because a single router system must be responsible for so many aspects, and coordinate so many low-level details, it's challenging to create compatible solutions, or constrain code footprint whilst retaining valuable properties such as lightweight progressive enhancement.
 
 Existing building blocks create subtle, but large, problems.
 
-The History [`pushState`](https://developer.mozilla.org/en-US/docs/Web/API/History/pushState) and [`replaceState`](https://developer.mozilla.org/en-US/docs/Web/API/History/replaceState) APIs provide a mechansim for passing a [cloneable](https://html.spec.whatwg.org/multipage/structured-data.html#structuredserializeinternal) JavaScript state object, which are returned to a page on change in state (usually via user action), however it is left as an exercise to the developer to map potentially different levels of application semantics into this API. It usually "feels wrong" to encode the state of an accordion component's open/close state in _either_ the [path](https://url.spec.whatwg.org/#dom-url-pathname) or [query parameters](https://url.spec.whatwg.org/#dom-url-searchparams), both of which are passed to servers and may have semantic meaning beyond UI state.
+The History [`pushState`](https://developer.mozilla.org/en-US/docs/Web/API/History/pushState) and [`replaceState`](https://developer.mozilla.org/en-US/docs/Web/API/History/replaceState) APIs provide a mechanism for passing a [cloneable](https://html.spec.whatwg.org/multipage/structured-data.html#structuredserializeinternal) JavaScript state object, which are returned to a page on change in state (usually via user action), however it is left as an exercise to the developer to map potentially different levels of application semantics into this API. It usually "feels wrong" to encode the state of an accordion component's open/close state in _either_ the [path](https://url.spec.whatwg.org/#dom-url-pathname) or [query parameters](https://url.spec.whatwg.org/#dom-url-searchparams), both of which are passed to servers and may have semantic meaning beyond UI state.
 
-URL [hashes](https://url.spec.whatwg.org/#dom-url-hash) are a reasonable next place to look for a solution as they are shareable and not meanignful to server applications by default, but [HTML already assigns meaning](https://html.spec.whatwg.org/multipage/browsing-the-web.html#scroll-to-fragid) to [hashes for anchor elements](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/a#Examples), creating potential conflicts. Fragments have also become a [potential XSS vector](https://medium.com/iocscan/dom-based-cross-site-scripting-dom-xss-3396453364fd), in part, because no safe parsing is provided by default. The [`hashchange`](https://developer.mozilla.org/en-US/docs/Web/API/Window/hashchange_event) event can allow components to be notified of state changes, but doesn't provide any semantic for location in stack history or meaningfully integrate into the [History API](https://developer.mozilla.org/en-US/docs/Web/API/History_API).
+URL [hashes](https://url.spec.whatwg.org/#dom-url-hash) are a reasonable next place to look for a solution as they are shareable and not meaningful to server applications by default, but [HTML already assigns meaning](https://html.spec.whatwg.org/multipage/browsing-the-web.html#scroll-to-fragid) to [hashes for anchor elements](https://developer.mozilla.org/en-US/docs/Web/HTML/Element/a#Examples), creating potential conflicts. Fragments have also become a [potential XSS vector](https://medium.com/iocscan/dom-based-cross-site-scripting-dom-xss-3396453364fd), in part, because no safe parsing is provided by default. The [`hashchange`](https://developer.mozilla.org/en-US/docs/Web/API/Window/hashchange_event) event can allow components to be notified of state changes, but doesn't provide any semantic for location in stack history or meaningfully integrate into the [History API](https://developer.mozilla.org/en-US/docs/Web/API/History_API).
 
 This leaves application authors torn. Shareable UI state either requires out-of-band mechanisms for persistence, or overloading of URLs, unwanted server-side implications, or potential loss of state when folding information into History API state objects. And that is to say nothing of navigating the APIs themselves and their [various warts](https://github.com/whatwg/html/issues/2174).
 
-Lastly, it should be noted that these problems largely arise only when developers have _already_ exerted enough to control to prevent "normal" link navigations via `<a href="...">`. Naturally-constructed applications will want to progressively enhance anchors, but the current system prevents this, forcing developers to be vigilant to add very specific local event handlers -- or forego anchor elements, potentially harming accessiblity and adding complexity.
+Lastly, it should be noted that these problems largely arise only when developers have _already_ exerted enough to control to prevent "normal" link navigations via `<a href="...">`. Naturally-constructed applications will want to progressively enhance anchors, but the current system prevents this, forcing developers to be vigilant to add very specific local event handlers -- or forgo anchor elements, potentially harming accessibility and adding complexity.
 
 ## Goals
 
@@ -83,7 +83,7 @@ To reduce this pain, we propose the cancelable `onbeforenavigate` event.
 history.onbeforenavigate = (e) => {
   // Cancel navigation; only available for same-origin navigations
   e.preventDefault();
-  console.log(e.url); // the destination URL; TODO: precident?
+  console.log(e.url); // the destination URL; TODO: precedent?
 };
 ```
 
@@ -129,25 +129,25 @@ history.onbeforenavigate = (e) => {
 };
 ```
 
-## UI State Fragements
+## UI State Fragments
 
 UI State Fragments build on the recently-launched [Scroll-to-Text Fragment](https://github.com/WICG/scroll-to-text-fragment) syntax. For those not familiar, Scroll-to-Text Fragments enable browsers to highlight portions of a page using a syntax like:
 
 ```
-https://example.com#:~:text=prefix-,startText,endText,-suffix
+https://example.com/#:~:text=prefix-,startText,endText,-suffix
 ```
 
 This syntax was [designed to be extensible](https://github.com/WICG/scroll-to-text-fragment#multiple-text-directives) via the `&` joiner, e.g.:
 
 ```
-https://example.com#:~:text=sometext&anotherdirective=value&etc...
+https://example.com/#:~:text=sometext&anotherdirective=value&etc...
 ```
 
 We build on this to encode a single (page-level) serialised object in a (name open for bikeshedding) `uistate` directive, e.g.:
 
 
 ```
-https://example.com#:~:uistate=<value>
+https://example.com/#:~:uistate=<value>
 ```
 
 The value itself is the result of [URI component encoding](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/encodeURIComponent) a [JSON serialization](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/JSON/stringify) of the subset of Structure Cloneable properties that can be naturally represented in JSON. In code, that makes these lines roughly equivalent:
@@ -199,7 +199,7 @@ for (item of sameOriginStack) {
   console.log(item.url);
   console.log(item.state); // the state in history.state
 }
-history.go(item); // new paramater type overload
+history.go(item); // new parameter type overload
 ```
 
 > Lots of "spelling" issues to be worked out here
@@ -226,7 +226,7 @@ A new type of link could explicitly invoke client side routing, or we could imag
   - positional param changes to `pushState` and `replaceState`?
   - we don't _think_ the new history stack introspection API adds more fingerprinting attacks, but need to validate
 
-## References & acknowledgements
+## References & acknowledgments
 
 Many thanks for valuable feedback and advice from:
 
