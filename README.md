@@ -131,7 +131,9 @@ history.onbeforenavigate = (e) => {
 
 ## UI State Fragments
 
-UI State Fragments build on the recently-launched [Scroll-to-Text Fragment](https://github.com/WICG/scroll-to-text-fragment) syntax. For those not familiar, Scroll-to-Text Fragments enable browsers to highlight portions of a page using a syntax like:
+UI State Fragments build on the [Fragment Directive](https://wicg.github.io/scroll-to-text-fragment/#the-fragment-directive) syntax `:~:`,
+with the first recently-launched fragment directive being [Text Fragments](https://web.dev/text-fragments/) `:~:text`.
+For those not familiar, Text Fragments enable browsers to highlight portions of a page using a syntax like:
 
 ```
 https://example.com/#:~:text=prefix-,startText,endText,-suffix
@@ -143,8 +145,7 @@ This syntax was [designed to be extensible](https://github.com/WICG/scroll-to-te
 https://example.com/#:~:text=sometext&anotherdirective=value&etc...
 ```
 
-We build on this to encode a single (page-level) serialised object in a (name open for bikeshedding) `uistate` directive, e.g.:
-
+We build on this to encode a single (page-level) serialised object in a (name open for bikeshedding) UI State directive `:~:uistate`, e.g.:
 
 ```
 https://example.com/#:~:uistate=<value>
