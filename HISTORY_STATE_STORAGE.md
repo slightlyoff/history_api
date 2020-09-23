@@ -17,7 +17,7 @@ A simple approach to improve this situation would be to create a secondary state
 This API would be fairly straightforward:
 
 ```
-// Akin to a call to history.replaceState(window.location.href, '', {foo: serializedUiState});
+// Akin to a call to history.replaceState({foo: serializedUiState}, '');
 history.stateStorage.setItem('foo', serializedUiState);
 // Returns serializedUiState
 history.stateStorage.getItem('foo');
@@ -38,7 +38,7 @@ history.forward();
 history.stateStorage.getItem('foo');
 
 // When pushing a new URL, the browser copies the current value of 'foo' automatically.
-history.pushState(newUrl, '', {});
+history.pushState({}, '', newUrl);
 // Returns serializedUiState
 history.stateStorage.getItem('foo');
 
