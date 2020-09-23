@@ -51,7 +51,8 @@ history.back();
 // Returns serializedUiState
 history.stateStorage.getItem('foo');
 
-// The only thing that's a little tricky is that updating a previous entry won't change future entries, so applications need to remember that.
+// The only thing that's a little tricky is that updating a previous entry
+// won't change future entries, so applications need to remember that.
 history.stateStorage.setItem('foo', differentSerializedUiState);
 history.forward();
 // Returns newSerializedUiState, not differentSerializedUiState
@@ -62,7 +63,8 @@ history.stateStorage.removeItem('foo');
 // Returns undefined
 history.stateStorage.getItem('foo');
 
-// And to fully conform to the Storage interface, the whole storage can be cleared. But this is probably rarely desirable.
+// And to fully conform to the Storage interface, the whole storage can be cleared.
+// But this is probably rarely desirable.
 history.stateStorage.clear();
 ```
 
