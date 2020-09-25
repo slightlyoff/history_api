@@ -29,7 +29,7 @@ with the last item being a date picker. A user may want to click the Back button
 hoping to close the date picker, but instead the back button cancels the whole form because
 the date picker does not integrate with the Back button.
 
-However, the History API makes this a rather hard problem. Among the issues:
+The History API makes handling back clicks for modals rather hard problem. Among the issues:
 
 1. This state is non-navigational. URL doesn't change. When the page is reloaded,
    it's very unlikely that an app will try to open the same popup automatically.
