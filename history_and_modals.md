@@ -26,7 +26,7 @@ is popped.
 
 As an extreme example, you can visualize a user filling in a 20 field form
 with the last item being a date picker. A user may want to click the Back button
-hoping to close the date picker, but instead canceling the whole form because
+hoping to close the date picker, but instead the back button cancels the whole form because
 the date picker does not integrate with the Back button.
 
 However, the History API makes this a rather hard problem. Among the issues:
