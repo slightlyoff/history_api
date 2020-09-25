@@ -1,7 +1,7 @@
 # Web History and Modals
 
 Modals are UI components that are layered on top of all other content and take
-my interaction focus. Some examples are:
+interaction focus. Some examples are:
 
 - a `<dialog>` element, especially the [`showModal()` API](https://developer.mozilla.org/en-US/docs/Web/API/HTMLDialogElement/showModal);
 - a sidebar menu;
