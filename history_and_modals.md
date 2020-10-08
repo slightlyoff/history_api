@@ -68,6 +68,7 @@ Some of the possible solutions could include:
 
 1. An extended `<dialog>` API or a new platform primitive.
 2. A back button event propagated via the <kbd>Esc</kbd> key in some cases.
+3. A new back button event.
 
 ### An extended `<dialog>` API or a new platform primitive
 
@@ -127,3 +128,26 @@ Similarly, this event handler looks like `unbeforeunload` to ensure that this
 feature cannot be abused as an escape hatch to block the back button. Consequently,
 the `event.preventDefault()` can cancel the "keydown" event, but it has no
 effect on the back button behavior.
+
+### A new back button event
+
+This approach is similar on the <kbd>Esc</kbd> event, but instead adds a new
+event type. This type could either be directly tied to the back button
+(`onbackbutton`) or still combine <kbd>Esc</kbd> and back button together
+(`oncancel`).
+
+The usage would be:
+
+```javascript
+const popup = document.createElement('div');
+popup.oncancel = (e) => {
+  if (!allDataSaved()) {
+    return 'Are you sure you want to close?';
+  }
+  popup.remove();
+};
+```
+
+A new event might be better to avoid overloading the existing event semantics
+for <kbd>Esc</kbd>, but it also means that the existing components will need
+to be changed to use it.
