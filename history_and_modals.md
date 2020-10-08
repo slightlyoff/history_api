@@ -151,3 +151,8 @@ popup.oncancel = (e) => {
 A new event might be better to avoid overloading the existing event semantics
 for <kbd>Esc</kbd>, but it also means that the existing components will need
 to be changed to use it.
+
+Another big benefit of this API is that it semantically unattached to the
+<kbd>Esc</kbd> and the back button, making it a platform choice how to invoke
+it. A particular platform might have it's own special cancelation gestures,
+such as "swipe away".
