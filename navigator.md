@@ -31,10 +31,10 @@ class Navigator {
   // Identifies a navigate. This includes information such as:
   //   newScreen info
   //   oldScreen info
-  //   replace (if navigate event)
-  //   source
+  //   replace (if stack modifying event)
+  //   source (if applicable)
   // This event also allows preventing default to prevent the navigation from being performed or ot allow modifying
-  addListener('navigate'|'navigateExisting') {}
+  addListener('navigate') {}
 }
 
 class Screen {
