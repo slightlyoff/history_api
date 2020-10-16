@@ -17,7 +17,7 @@ class Navigator {
   }): Promise<Screen> {}
 
   // Navigate to the Screen. Ideally the name is unique in the stack. If not, it finds the first one that matches.
-  navigateExisting(name: String, source: Object|undefined = undefined): Promise<Screen> {}
+  navigateTo(name: String, source: Object|undefined = undefined): Promise<Screen> {}
 
   // Returns the current Screen.
   getCurrentScreen(): Screen {}
