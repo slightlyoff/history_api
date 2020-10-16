@@ -23,10 +23,13 @@ class Navigator {
   getCurrentScreen(): Screen {}
 
   // Returns all Screens.
-  getScreens(): []Screen
+  getScreens(): []Screen {}
 
-  // Clears all Screens.
-  clear() {}
+  // Navigates back one Screen.
+  back(): Promise<Screen> {}
+
+  // Navigates forward one Screen.
+  forward(): Promise<Screen> {}
 
   // Identifies a navigate. This includes information such as:
   //   newScreen info
