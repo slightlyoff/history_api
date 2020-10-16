@@ -43,6 +43,8 @@ class Navigator {
 class Screen {
   // Name of this Screen.
   readonly name: string;
+  // Unique identifier for this Screen.
+  readonly id: string;
   // URL of this Screen.
   readonly url: URL;
   // Params passed into the original navigate call.
