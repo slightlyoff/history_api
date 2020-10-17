@@ -1,59 +1,56 @@
-# Screen navigation
+# Frame navigation
 
 ```
 class Navigator {
-  navigate({
-    name: string,
-    url: URL|string,
-    // Parameters that are passed as data to the Screen.
-    params: {string: Any}|undefined = undefined,
-    // Whether to replace the current Screen or merely push it onto the stack.
-    replace: boolean = false,
-    // A source Object that contains arbitrary user specified data. This is useful
-    // for doing advanced history handling, like implementing a router, where data
-    // needs to be passed alongside a navigation for consumption but does not need
-    // to be serialized as part of the history entry.
-    source: Object|undefined = undefined,
-  }): Promise<Screen> {}
+  // Takes as its only argument a callback that updates the input url params.
+  // The return value is an Object with optional properties.
+  // url: the url parameter possibly modified or undefined, meaning to preserve the existing url.
+  // params: the params parameter possibly modified or undefined, meaning to preserve the existing params.
+  // replace: true/false/undefined, if true replaces the current Frame instead of pushing a new one.
+  // The function rejects if the return value is not the exact same for both url and params.
+  update(({url: URL, params: {string: Any}}):
+      {url: URL|undefined, params: {string: Any}|undefined, replace: boolean|undefined} => {}): Promise<Frame> {}
 
-  // Navigate to the Screen. Ideally the name is unique in the stack. If not, it finds the first one that matches.
-  navigateTo(name: String, source: Object|undefined = undefined): Promise<Screen> {}
+  // Navigate to the Frame.
+  navigateTo(key: string): Promise<Frame> {}
 
-  // Returns the current Screen.
-  getCurrentScreen(): Screen {}
+  // Returns the current Frame.
+  getFrame(): Frame {}
 
-  // Returns all Screens.
-  getScreens(): []Screen {}
+  // Returns all Frames.
+  getStack(): []Frame {}
 
-  // Navigates back one Screen.
-  back(): Promise<Screen> {}
+  // Navigates back one Frame.
+  back(): Promise<Frame> {}
 
-  // Navigates forward one Screen.
-  forward(): Promise<Screen> {}
+  // Navigates forward one Frame.
+  forward(): Promise<Frame> {}
 
-  // Identifies a navigate. This includes information such as:
-  //   newScreen info
-  //   oldScreen info
-  //   replace (if stack modifying event)
-  //   source (if applicable)
-  // This event also allows preventing default to prevent the navigation from being performed or ot allow modifying
-  addListener('navigate') {}
+  // Identifies any frame change that takes place.
+  //   oldFrame info
+  //   newFrame info
+  //   replace (if applicable)
+  //   action The action that caused this to change, for instance if the frame is changing due
+  //       to browser actions, like a back or forward button.
+  addListener('frameChange') {}
 }
 
-class Screen {
-  // Name of this Screen.
-  readonly name: string;
-  // Unique identifier for this Screen.
-  readonly id: string;
-  // URL of this Screen.
+class Frame {
+  // Unique identifier for this Frame.
+  readonly key: string;
+  // URL of this Frame.
   readonly url: URL;
-  // Params passed into the original navigate call.
+  // Params passed into the original Frame.
   readonly params: {string: Any}|undefined;
 
-  // focus - the screen navigated in.
-  // blur - the screen navigated out
-  // beforeRemove - the screen is about to be navigated out
-  // unreachable - the screen is no longer navigable
+  // focus - the frame navigated in.
+  // blur - the frame navigated out
+  // beforeRemove - the frame is about to be navigated out. Enables rejecting the removal of the frame under certain circumstances.
+  // unreachable - the frame is no longer navigable, due to being in a branch of history that was evicted or became unreachable.
   addListener('focus'|'blur'|'beforeRemove'|'unreachable') {}
 }
-```
+
+navigator.update(({url}) => {
+  url.searchParams.set('foo', 'bar');
+  return {url, replace: true};
+});
