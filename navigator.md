@@ -99,7 +99,6 @@ This proposes adding a new method to `window.history.navigator`.
 // url: the url parameter possibly modified or undefined, meaning to preserve the existing url.
 // params: the params parameter possibly modified or undefined, meaning to preserve the existing params.
 // replace: true/false/undefined, if true replaces the current Frame instead of pushing a new one.
-// The function rejects if the return value is not the exact same for both url and params.
 createFrame(({url: URL, params: {string: Any}}):
     {url: URL|undefined, params: {string: Any}|undefined, replace: boolean|undefined} => {}): Promise<Frame> {}
 ```
