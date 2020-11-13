@@ -38,7 +38,7 @@ Application Developers face a range of challenges when performing client-side up
  - Difficulty in serializing & sharing "UI state" separate from "application state"
  - Complexity in capturing browser-initiated page unloading for [client-side routers](https://blog.risingstack.com/writing-a-javascript-framework-client-side-routing/)
  - Tricky coordination problems between multiple page components which may each want to persist transient UI state but remain largely unaware of each other
- - Difficulty in understanding one's location in, and predicting effects of chagnes to, the [HTML5 History API stack](https://developer.mozilla.org/en-US/docs/Web/API/History_API) due to potentially co-mingled origins
+ - Difficulty in understanding one's location in, and predicting effects of changes to, the [HTML5 History API stack](https://developer.mozilla.org/en-US/docs/Web/API/History_API) due to potentially co-mingled origins
 
 Taken together, these challenges create a "totalizing" effect in applications when client-side state management is introduced. Because a single router system must be responsible for so many aspects, and coordinate so many low-level details, it's challenging to create compatible solutions, or constrain code footprint whilst retaining valuable properties such as lightweight progressive enhancement.
 
