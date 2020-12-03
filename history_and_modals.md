@@ -46,6 +46,8 @@ An important common feature of these modals is that they are designed to be easy
 
 _TODO: do assistive technologies have their own close signals? On desktop it's probably just the <kbd>Esc</kbd> key, but maybe on mobile?_
 
+We define a **close signal** as a platform-mediated interaction that's intended to close a modal. This is distinct from page-mediated interactions, such as clicking on an "x" or "Done" button, or clicking on the backdrop outside of the modal.
+
 Currently, web developers have no good way to handle these close signals for their own modals. This is especially problematic on Android devices, where the back button is the traditional close signal. Imagine a user filling in a twenty-field form, with the last item being a custom date picker modal. The user might click the back button hoping to close the date picker, like they would in a native app. But instead, the back button navigates the web page's history tree, likely closing the whole form and losing the filled information.
 
 This explainer proposes a new API to enable web developers, especially component authors, to better handle these close signals.
@@ -88,7 +90,7 @@ On mobile platforms, getting the right behavior is significantly harder. First, 
 
 - This UI state is non-navigational, i.e., the URL doesn't and shouldn't change when opening a modal. When the page is reloaded or shared, web developers generally don't want to automatically re-open the same modal.
 
-- It's very hard to determine when the modal state is popped out of history, because both moving forward and backward through history emit the same `popstate` event.
+- It's very hard to determine when the modal state is popped out of history, because both moving forward and backward through history emit the same `popstate` event, and that event can be emitted for history navigation that traverses more than one entry at a time.
 
 - The `history.state` API, used to store the modal state, is rather fragile: user-initiated fragment navigation, as well as other calls to `history.pushState()` and `history.replaceState()`, can override it.
 
@@ -108,7 +110,8 @@ The proposal is to introduce a new API, the `ModalCloseWatcher` class, which has
 // but constructing does not consume user activation.
 const watcher = new ModalCloseWatcher();
 
-// This fires when the user sends a close signal.
+// This fires when the user sends a close signal, e.g. by pressing Esc on
+// desktop or by pressing Android's back button.
 watcher.onclose = () => {
   myModal.close();
 };
@@ -144,21 +147,31 @@ If the user says "No" (i.e., keep the modal open), then the `ModalCloseWatcher` 
 
 The exact UI for this confirmation is up to the user agent. It could be a `beforeunload`-style modal dialog, but the resulting "modal on top of a modal" might be ugly. _TODO maybe we can get some mock-ups of better ideas._
 
+Note that the `beforeclose` event is not fired when the user navigates away from the page: i.e., it has no overlap with `beforeunload`. `beforeunload` remains the best way to confirm a page unload, with `beforeclose` only used for confirming a modal close signal.
+
 ### Platform implementation notes
 
 #### Android: interaction with fragment navigation
 
 Consider a modal which contains a lot of text, such as a terms of service with a table of contents, or a preview overlay that shows this very document. Within such a modal, it'd be possible to perform fragment navigation.
 
-For implementations like Android which use the back button as their close signal, the desired user experience is that the back button navigates back through the normal fragment navigation stack first. Only when the user returns to the original state where the modal was opened, will the back button be a close signal.
+For implementations like Android which use the back button as their close signal, we suggest that in such situations that the back button act as a modal close signal, only doing fragment navigation back through the history stack when there are no active modal close watchers.
 
-This does not impact the specification of this feature, since the exact choice of what counts as a close signal is implemenation-defined. But it does impact the implementation, for Android platforms. There, the existence of an active `ModalCloseWatcher` does not suffice to mean that back button presses should be routed to that `ModalCloseWatcher`. Instead, the implementation needs to make sure that the current session history entry is the same as the one that was current when the `ModalCloseWatcher` was constructed. Only when they match should the back button be counted as a close signal.
+This does mean that the modal will be closed, but the page's current fragment and its history stack will still reflect content from inside the modal. The application would need to clean up such history entries. We believe this is best done through a history-specific API, e.g. the existing `window.history` API or one of the better ones discussed in [slightlyoff/history_api](https://github.com/slightlyoff/history_api), since this sort of batching and reversion of history entries is a generic problem and not modal-specific.
 
-Note that no such remembrance of the history state applies on desktop, where the back button is not involved. The <kbd>Esc</kbd> key can always send a close signal, even after some fragment navigations.
+(In practice, we expect this problem to occur relatively rarely.)
+
+The alternative is for implementations to treat back button presses as fragment navigations, only treating them as modal close signals once the user has returned to the same history entry as the modal was opened in. But some discussion with framework authors indicated this would be harder to deal with and reason about, especially since it would introduce significant divergences between platforms, and so we encourage implementations to go with the model suggested above.
 
 #### iOS: do nothing
 
 On iOS, where to our knowledge there is no uniform close signal, this API is very simple. `ModalCloseWatcher` should still exist, and should still require transient user activation to construct, for interoperability. But, the `beforeclose` and `close` events never fire. Instead, modals will be closed normally via whatever specific interaction makes sense for the modal in question, such as clicking on the backdrop or swiping down.
+
+Note that some application and component developers adjust to iOS's lack of close signals by making "Done" or "x" buttons more explicit in their UI. So while the browser implementation of `ModalCloseWatcher` would do nothing, components might end up doing something on their own.
+
+#### Keyboards attached to mobile devices
+
+TODO this might change the rest of the doc. https://osxdaily.com/2019/04/12/how-type-escape-key-ipad/
 
 ### Abuse analysis
 
