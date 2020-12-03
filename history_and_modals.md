@@ -68,8 +68,6 @@ Our primary goals are as follows:
 
 - Be usable by component authors, in particular by avoiding any global state modifications that might interfere with the app or with other components.
 
-- Do not interfere with history navigation that takes place while a modal is open ([see below](#android-interaction-with-fragment-navigation)).
-
 The following are nice-to-have goals:
 
 - Specify uniform-per-platform behavior across existing platform modals, e.g. `<dialog>`, `<input>` pickers, and fullscreen. (E.g., currently the back button on Android does not close modal `<dialog>`s, but instead navigates history. It does close `<input>` pickers and cancel fullscreen.)
@@ -153,15 +151,13 @@ Note that the `beforeclose` event is not fired when the user navigates away from
 
 #### Android: interaction with fragment navigation
 
-Consider a modal which contains a lot of text, such as a terms of service with a table of contents, or a preview overlay that shows this very document. Within such a modal, it'd be possible to perform fragment navigation.
+Consider a modal which contains a lot of text, such as a terms of service with a table of contents, or a preview overlay that shows an interactive version of this very document. Within such a modal, it'd be possible to perform fragment navigation. Although these situations are hopefully rare in practice, we need to figure out how they impact the proposed API.
 
-For implementations like Android which use the back button as their close signal, we suggest that in such situations that the back button act as a modal close signal, only doing fragment navigation back through the history stack when there are no active modal close watchers.
+In particular, the problem case is again Android, where the back button serves as both a potential close signal and a way of navigating the history stack. We suggest that for Android, the back button still acts as a modal close signal whenever any modal close watcher is active. That is, it should only do fragment navigation back through the history stack when there are no active modal close watchers, even if fragment navigation has occurred since the modal was shown.
 
-This does mean that the modal will be closed, but the page's current fragment and its history stack will still reflect content from inside the modal. The application would need to clean up such history entries. We believe this is best done through a history-specific API, e.g. the existing `window.history` API or one of the better ones discussed in [slightlyoff/history_api](https://github.com/slightlyoff/history_api), since this sort of batching and reversion of history entries is a generic problem and not modal-specific.
+This does mean that the modal could be closed, while the page's current fragment and its history stack still reflect fragment navigations that were performed inside the modal. The application would need to clean up such history entries to give a good user experience. We believe this is best done through a history-specific API, e.g. the existing `window.history` API or one of the better ones discussed in [slightlyoff/history_api](https://github.com/slightlyoff/history_api), since this sort of batching and reversion of history entries is a generic problem and not modal-specific.
 
-(In practice, we expect this problem to occur relatively rarely.)
-
-The alternative is for implementations to treat back button presses as fragment navigations, only treating them as modal close signals once the user has returned to the same history entry as the modal was opened in. But some discussion with framework authors indicated this would be harder to deal with and reason about, especially since it would introduce significant divergences between platforms, and so we encourage implementations to go with the model suggested above.
+The alternative is for implementations to treat back button presses as fragment navigations, only treating them as modal close signals once the user has returned to the same history entry as the modal was opened in. But discussion with framework authors indicated this would be harder to deal with and reason about. In particular, this would introduce significant divergences between platforms: on Android, closing a modal would not require any history-stack-cleaning, whereas on other platforms it would. So, in accordance with our [goal](#goals) of discouraging platform-specific code, we encourage implementations to go with the model suggested above, which enables web developers to use the same cleanup code without platform-specific branches. (Or they can avoid the problem altogether, by not providing opportunities for fragment navigation while modals are opened.)
 
 #### iOS: do nothing
 
