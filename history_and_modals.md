@@ -1,5 +1,7 @@
 # Modal Close Signals
 
+_Note: the authors of the proposal are strongly considering an [alternative proposal](#bundling-this-with-high-level-apis) of bundling this with new higher-level APIs for modals, instead of separating out the close signal problem specifically. So keep in mind that this proposal is extra-tentative, as you continue reading!_
+
 <!-- START doctoc generated TOC please keep comment here to allow auto update -->
 <!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
 ## Table of contents
@@ -27,7 +29,7 @@
   - [Integration with the history API](#integration-with-the-history-api)
   - [Automatically translating all close signals to <kbd>Esc</kbd>](#automatically-translating-all-close-signals-to-kbdesckbd)
   - [Not gating on transient user activation](#not-gating-on-transient-user-activation)
-  - [Restricting our solution to `<dialog>`](#restricting-our-solution-to-dialog)
+  - [Bundling this with high-level APIs](#bundling-this-with-high-level-apis)
 - [Security and privacy considerations](#security-and-privacy-considerations)
 - [Stakeholder feedback](#stakeholder-feedback)
 - [Acknowledgments](#acknowledgments)
@@ -375,21 +377,25 @@ However, upon reflection, such a solution doesn't really solve the Android back 
 
 ### Not gating on transient user activation
 
-We're gating the creation of `ModalCloseWatcher` on transient user activation as an [anti-abuse measure](#abuse-analysis). However, this protection is stronger than the existing protections against excessive `history.pushState()` use, which are are more vague and less mandatory in [that method's spec](https://html.spec.whatwg.org/multipage/history.html#dom-history-pushstate):
+We're gating the creation of more than one `ModalCloseWatcher` on transient user activation as an [anti-abuse measure](#abuse-analysis). However, this protection is stronger than the existing protections against excessive `history.pushState()` use, which are are more vague and less mandatory in [that method's spec](https://html.spec.whatwg.org/multipage/history.html#dom-history-pushstate):
 
 > Optionally, return. (For example, the user agent might disallow calls to these methods that are invoked on a timer, or from event listeners that are not triggered in response to a clear user action, or that are invoked in rapid succession.)
 
-We could gate the creation of `ModalCloseWatcher` on similarly-vague and optional protections. This would allow more free use of it, especially on platforms that don't use the back button as a close signal and so don't need the abuse protection. And the current restriction does prohibit some use cases for non-user-initiated modals, such as a "session inactivity timeout" modal.
+We could gate the creation of `ModalCloseWatcher` on similarly-vague and optional protections. This would allow more free use of it, especially on platforms that don't use the back button as a close signal and so don't need the abuse protection.
 
-But on balance, we'd prefer to start with the transient user activation restriction, mainly for reasons of interoperability. Allowing platforms to differ in when `ModalCloseWatcher`s can be created would potentially create a race to the bottom, where nobody can be stricter than the most widely-used implementation. Arguably, if we'd designed the history API today, `history.pushState()` itself would only be usable from transient user activation.
+But on balance, we'd prefer to start with the transient user activation restriction (plus one "free" `ModalCloseWatcher`), mainly for reasons of interoperability. Allowing platforms to differ in when `ModalCloseWatcher`s can be created would potentially create a race to the bottom, where nobody can be stricter than the most widely-used implementation. Arguably, if we'd designed the history API today, `history.pushState()` itself would only be usable from transient user activation.
 
-### Restricting our solution to `<dialog>`
+### Bundling this with high-level APIs
 
-Instead of a dedicated `ModalCloseWatcher` class, we could say that `<dialog>` has the magic ability to intercept close signals. We'd [extend it](#extending-dialog) to add confirmation abilities, to cover all the use cases, and then suggest everyone use `<dialog>` for all their modal needs. Here, `showModal()` would serve as the signal to the browser to start routing close signals to the dialog.
+The proposal here exposes `ModalCloseWatcher` as a primitive. However, watching for close signals is only a small part of what makes modals difficult. There is also [top layer interaction](https://github.com/whatwg/html/issues/4633), [blocking interaction with the main document](https://github.com/whatwg/html/issues/897) (including trapping focus within the modal while it is open), providing appropriate accessibility semantics, and determining the appropriate screen position.
 
-This stretches the semantics of "dialog" a good bit. Saying that a picker is a "dialog", on desktop at least, is pretty unusual. Saying that a sidebar or context menu are dialogs is generally unprecedented. Using `<dialog>` for these would require some annoying extra work from web developers to reset the styles each time.
+Instead of providing the individual building blocks for all of these pieces, it may be better to bundle them together into high-level semantic elements. We already have `<dialog>`; we could imagine others such as `<popup>`, `<toast>`, `<tooltip>`, etc. These would then bundle the appropriate features, e.g. while all of them would benefit from top layer interaction, `<toast>` and `<tooltip>` do not need to handle close signals.
 
-This also goes against the [Extensible Web Manifesto](https://extensiblewebmanifesto.org/), which urges us not to bundle up lower-level capabilities like close signal watching into higher-level features like specific HTML elements. Instead, the proposed `ModalCloseWatcher` class can be seen as explaining `<dialog>`'s close signal interception, similar to [the example above](#a-custom-dialog).
+This likely leads to a better and more uniform user experience. If developers use the correct high-level element, then they'll get the appropriate behavior, including close signal handling, for free. For example, not all developers realize that menus should respond to close signals. If we rely on them to hook up `ModalCloseWatcher` to their custom menu code, some developers might fail to do so. Whereas if modal close signal handling is automatic when using a `<popup type="menu">` element, it will just work.
+
+If we went down this path, much of the research and semantics in this explainer document would still be useful. We'd essentially pivot the proposal so that all the appropriate high-level elements would get extended in the same way we're currently proposing [for `<dialog>`](#extending-dialog). That is, they'd have `beforeclose` and `close` events, and `close()` methods, that follow all the rules outlined in this proposal. They would all centrally reference the "close signal" concept, in specifications and implementations, to ensure uniformity. There might even be a `ModalCloseWatcher` class used internally by implementations! But, there wouldn't be a JavaScript-exposed `ModalCloseWatcher` API.
+
+The authors of this proposal find this alternative quite attractive, and welcome any input to help weigh the JavaScript-exposed `ModalCloseWatcher` class versus only using it under the hood.
 
 ## Security and privacy considerations
 
