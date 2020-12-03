@@ -9,9 +9,12 @@
 - [What developers are doing today](#what-developers-are-doing-today)
 - [Proposal](#proposal)
   - [Asking for confirmation](#asking-for-confirmation)
+  - [User activation gating](#user-activation-gating)
+  - [Signaling close yourself](#signaling-close-yourself)
   - [Platform implementation notes](#platform-implementation-notes)
     - [Android: interaction with fragment navigation](#android-interaction-with-fragment-navigation)
     - [iOS: do nothing](#ios-do-nothing)
+    - [Keyboards attached to mobile devices](#keyboards-attached-to-mobile-devices)
   - [Abuse analysis](#abuse-analysis)
   - [Realistic examples](#realistic-examples)
     - [A sidebar](#a-sidebar)
@@ -155,6 +158,33 @@ The allowance for a single non-activation-triggered `ModalCloseWatcher` is to al
 
 Note that for developers, this means that calling `modalCloseWatcher.destroy()` properly is important, as doing so will free up the "free `ModalCloseWatcher` slot", if it has been previously consumed.
 
+### Signaling close yourself
+
+The API has an additional convenience method, `watcher.signalClosed()`, which acts _as if_ a close signal had been sent by the user. The intended use case is to allow centralizing close-handling code. So the above example of
+
+```js
+watcher.onclose = () => myModal.close();
+
+myModalCloseButton.onclick = () => {
+  watcher.destroy();
+  myModal.close();
+};
+```
+
+could be replaced by
+
+```js
+watcher.onclose = () => myModal.close();
+
+myModalCloseButton.onclick = () => watcher.signalClosed();
+```
+
+deduplicating the `myModal.close()` call by having the developer put all their close-handling logic into the watcher's `close` event handler.
+
+If called from within [transient user activation](https://html.spec.whatwg.org/multipage/interaction.html#transient-activation-gated-api), `signalClosed()` also invokes `beforeclose` event handlers, and will potentially cause a confirmation UI to come up which could delay the `close` event. If called without user activation, then it skips straight to the `close` event.
+
+In either case, as usual, reaching the `close` event will inactivate the `ModalCloseWatcher`, meaning it receives no further events in the future and it no longer occupies the "free `ModalCloseWatcher` slot", if it was previously doing so.
+
 ### Platform implementation notes
 
 #### Android: interaction with fragment navigation
@@ -194,6 +224,9 @@ The above sections give illustrative usage of the API. The following ones show h
 For a sidebar (e.g. behind a hamburger menu), which wants to hide itself on a user-provided close signal, that could be hooked up as follows:
 
 ```js
+const hamburgerMenuButton = document.querySelector('#hamburger-menu-button');
+const sidebar = document.querySelector('#sidebar');
+
 hamburgerMenuButton.addEventListener('click', () => {
   const watcher = new ModalCloseWatcher();
 
@@ -203,8 +236,12 @@ hamburgerMenuButton.addEventListener('click', () => {
     sidebar.animate([{ transform: 'translateX(0)' }, { transform: 'translateX(-200px)' }]);
   };
 
-  // TODO: also call watcher.destroy() if the sidebar closes for other reasons,
-  // e.g. clicking outside the sidebar.
+  // Close on clicks outside the sidebar.
+  document.body.addEventListener('click', e => {
+    if (e.target.closest('#sidebar') === null) {
+      watcher.close();
+    }
+  });
 });
 ```
 
@@ -225,7 +262,7 @@ class MyPicker extends HTMLElement {
     this.#overlay = /* ... */;
     this.#overlay.hidden = true;
     this.#overlay.querySelector('.close-button').addEventListener('click', () => {
-      this.#watcher.destroy();
+      this.#watcher.close();
     });
 
     this.#button.onclick = () => {
@@ -301,7 +338,11 @@ We could add a `beforeclose` even to `<dialog>` which behaves in the exact same 
 
 This provides an important new capability, of allowing web developers to double-check with the user if the user presses the <kbd>Esc</kbd> key, or otherwise sends a modal close signal. Currently, the browser will automatically close the `<dialog>`, potentially leading to data loss.
 
-We would add the same restrictions on this event as `ModalCloseWatcher` has: it would only be fired if the corresponding call to `dialogEl.showModal()` was done during user activation.
+We would add the same restrictions on this event as `ModalCloseWatcher` has: it would only be fired if the corresponding call to `dialogEl.showModal()` was done during user activation. And with this integration, `<dialog>`s would potentially take up the "free `ModalCloseWatcher` slot", i.e. you couldn't both pop up a `<dialog>` without user activation, and then construct a new `ModalCloseWatcher` without user activation.
+
+Similarly, `<dialog>`'s existing `close()` method would, if called from user activation, trigger the `beforeclose` event.
+
+In general, we can think of this as if `<dialog>` is implemented under the hood using `ModalCloseWatcher`. Likely, it would be, in implementations and the specification. The web developer would not see this, however, since directly exposing it would be redundant with `<dialog>`'s existing functionality. That is, it would be awkward to exose something like `dialogEl.closeWatcher`, since it would lead to confusing situations like `dialogEl.closeWatcher.close()` living alongside `dialogEl.close()`, or `dialogEl.closeWatcher.addEventListener("close", ...)` living alongside `dialogEl.addEventListener("close", ...)`.
 
 ### Unifying existing close signals
 
