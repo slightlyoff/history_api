@@ -101,11 +101,8 @@ On mobile platforms, getting the right behavior is significantly harder. First, 
 The proposal is to introduce a new API, the `ModalCloseWatcher` class, which has the following basic API:
 
 ```js
-// Constructor only works from within transient user activation;
-// otherwise, it throws a "NotAllowedError" DOMException.
-//
-// Only one such construction can be done per transient user activation,
-// but constructing does not consume user activation.
+// Note: constructor could throw a "NotAllowedError" DOMException, if used too
+// many times without user interaction.
 const watcher = new ModalCloseWatcher();
 
 // This fires when the user sends a close signal, e.g. by pressing Esc on
@@ -118,6 +115,7 @@ watcher.onclose = () => {
 // modal closes normally. This will prevent future events on this watcher.
 myModalCloseButton.onclick = () => {
   watcher.destroy();
+  myModal.close();
 };
 ```
 
@@ -147,6 +145,16 @@ The exact UI for this confirmation is up to the user agent. It could be a `befor
 
 Note that the `beforeclose` event is not fired when the user navigates away from the page: i.e., it has no overlap with `beforeunload`. `beforeunload` remains the best way to confirm a page unload, with `beforeclose` only used for confirming a modal close signal.
 
+### User activation gating
+
+It was mentioned above that the `new ModalCloseWatcher()` constructor can throw if called too many times without user activation. Specifically, the design is that the page gets one "free" active `ModalCloseWatcher` at a time. After that, any further `ModalCloseWatcher` constructions require [transient activation](https://html.spec.whatwg.org/multipage/interaction.html#transient-activation-gated-api), i.e., the construction must happen as part of or shortly after a user interaction event like `click`, `pointerup`, or `keydown`.
+
+The motivation for this is that, for platforms like Android where the modal close gesture is to use the back button, we need to prevent abuse that traps the user on a page by effectively disabling their back button. This restriction means that the back button can only be intercepted as many times as user activation was given to the document, plus one.
+
+The allowance for a single non-activation-triggered `ModalCloseWatcher` is to allow use cases like "session inactivity timeout" modals, or high-priority interrupt modals. The page can create a single one of these at a given time, which we believe strikes a good balance between meeting realistic use cases and preventing abuse.
+
+Note that for developers, this means that calling `modalCloseWatcher.destroy()` properly is important, as doing so will free up the "free `ModalCloseWatcher` slot", if it has been previously consumed.
+
 ### Platform implementation notes
 
 #### Android: interaction with fragment navigation
@@ -171,11 +179,9 @@ TODO this might change the rest of the doc. https://osxdaily.com/2019/04/12/how-
 
 ### Abuse analysis
 
-Recall that, for platforms like Android where the modal close gesture is to use the back button, we need to prevent abuse that traps the user on a page by effectively disabling their back button. Gating the `ModalCloseWatcher` constructor behind [transient activation](https://html.spec.whatwg.org/multipage/interaction.html#transient-activation-gated-api) is our main line of defense against this. It means that the back button can only be intercepted as many times as user activation was given to the document.
+As discussed [above](#user-activation-gating), for platforms like Android where the modal close gesture is to use the back button, we need to prevent abuse that traps the user on a page by effectively disabling their back button. The user activation gating is intended to combat that. Notably, that protection is already stronger than anything done today for the `history.pushState()` API, which is another means by which apps can attempt to trap the user on the page. [See discussion below](#not-gating-on-transient-user-activation) for more on that.
 
-This protection is already stronger than anything done today for the `history.pushState()` API, which is another means by which apps can attempt to trap the user on the page. [See discussion below](#not-gating-on-transient-user-activation) for more on that.
-
-Finally, we note that in most back button UIs, the user always has an escape hatch of holding down the back button and explicitly choosing a history step to navigate back to. This is never a modal close signal.
+Additionally, we note that in most back button UIs, the user always has an escape hatch of holding down the back button and explicitly choosing a history step to navigate back to. This is never a modal close signal.
 
 Another potential abuse vector is the confirmation dialogs triggered by the `beforeclose` event. We saw much abuse of `Window`'s `beforeunload` event, during the era where it allowed user-provided strings (via `event.returnValue` or the event handler return value). The issue there is putting web-developer-supplied strings into trusted browser UI. Thus, we have designed this API to avoid this; the only action the web developer can take is the binary signal of either canceling the event, or letting it proceed.
 
