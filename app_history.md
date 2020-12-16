@@ -1,0 +1,423 @@
+# App History API
+
+_Note: the name is very bikesheddable. A previous name was "navigator" but `window.navigator` already exists._
+
+The web's existing [history API](https://developer.mozilla.org/en-US/docs/Web/API/History) is problematic for a number of reasons, which makes it hard to use for web applications. This proposal introduces a new one, which is more directly usable by web application developers to address the use cases they have for history introspection, mutation, and observation/interception.
+
+This new API layers on top of the existing API and specification infrastructure, with well-defined interaction points. The main differences are that it is scoped to the current origin and frame, and it is designed to be pleasant to use instead of being a historical accident with many sharp edges.
+
+<!-- START doctoc generated TOC please keep comment here to allow auto update -->
+<!-- DON'T EDIT THIS SECTION, INSTEAD RE-RUN doctoc TO UPDATE -->
+## Table of contents
+
+- [Problem statement](#problem-statement)
+- [Goals](#goals)
+- [Proposal](#proposal)
+  - [The current entry, and single-page navigations](#the-current-entry-and-single-page-navigations)
+  - [Inspection of the app history list](#inspection-of-the-app-history-list)
+  - [Navigation through the app history list](#navigation-through-the-app-history-list)
+  - [Events and navigation interception](#events-and-navigation-interception)
+    - [Per-entry events](#per-entry-events)
+    - [Current entry change monitoring](#current-entry-change-monitoring)
+    - [Navigation monitoring and interception](#navigation-monitoring-and-interception)
+    - [Complete event sequence](#complete-event-sequence)
+- [Integration with the existing history API and spec](#integration-with-the-existing-history-api-and-spec)
+- [Impact on back button and user agent UI](#impact-on-back-button-and-user-agent-ui)
+- [Security and privacy considerations](#security-and-privacy-considerations)
+- [Stakeholder feedback](#stakeholder-feedback)
+- [Acknowledgments](#acknowledgments)
+- [Appendix: full API surface, in Web IDL format](#appendix-full-api-surface-in-web-idl-format)
+
+<!-- END doctoc generated TOC please keep comment here to allow auto update -->
+
+## Problem statement
+
+Web application developers, as well as the developers of router libraries for single-page applications, want to accomplish a number of use cases related to history:
+
+- Intercepting cross-document navigations, replacing them with single-page navigations (i.e. loading content into the appropriate part of the existing document), and then updating the URL bar.
+
+- Performing single-page navigations that create and pushing a new entry onto the history stack, to represent a new conceptual history entry.
+
+- Navigating backward or forward through the history stack via application-provided UI.
+
+- Synchronizing application or UI state with the current position in the history stack, so that user- or application-initiated navigations through the history stack appropriately restores application/UI state.
+
+The existing [history API](https://developer.mozilla.org/en-US/docs/Web/API/History) is difficult to use for these purposes. The fundamental problem is that `window.history` surfaces the joint session history of a browsing session, and so gets updated in response to navigations in nested frames, or cross-origin navigations. A web application cares about its own, same-origin, current-frame history entries, and having to deal with the entire joint session history makes this very painful. Even in a carefully-crafted web app, a single iframe can completely mess up the application's history stack.
+
+The existing history API also has a number of less-fundamental, but still very painful, problems around how its API shape has grown organically, with only very slight considerations for single-page app architectures. For example, it provides no mechanism for intercepting navigations; to do this, developers have to intercept all `click` events, cancel them, and perform the appropriate `history.pushState()` call. The `history.state` property is a very bad storage mechanism for application and UI state, as it disappears and reappears as you transition throughout the history stack, instead of allowing access to earlier entries in the stack. And the ability to navigate throughout the stack is limited to numeric offsets, with `history.go(-2)` or similar; thus, navigating back to an actual specific state requires keeping a side table mapping history indices to application states.
+
+To hear more detail about these problems, in the words of a web developer, see [@dvoytenko](https://github.com/dvoytenko)'s ["The case for the new Web History API"](https://github.com/dvoytenko/web-history-api/blob/master/problem.md). See also [@housseindjirdeh](https://github.com/housseindjirdeh)'s ["History API and JavaScript frameworks"](https://docs.google.com/document/d/1gLW_FlR_wD93ZWXWmH14q0UssBaR0eGMk8njyr6p3cE/edit).
+
+## Goals
+
+Our primary goals are as follows:
+
+- Allow easy conversion of cross-document navigations into single-page app same-document navigations, without fragile hacks like a global `click` handler.
+
+- Provide a uniform way to signal single-page app navigations, including their duration.
+
+- Provide a reliable system to tie application and UI state to history entries.
+
+- Provide events for notifying the application about navigations through the list of history entries, which they can use to synchronize application or UI state.
+
+- Allow analytics (first- or third-party) to watch for navigations, including gathering timing information about how long they took, without interfering with the rest of the application.
+
+- Provide a way for an application to reliably navigate through its own history stack.
+
+- Provide a reasonable layering onto and integration with the existing `window.history` API, in terms of spec primitives and ensuring non-terrible behavior when both are used.
+
+Non-goals:
+
+- Provide applications knowledge of cross-origin history entries or state.
+
+- Provide applications knowledge of other frames' entries or state.
+
+- Handle the case where the Android back button is being used as a "modal close signal"; instead, we believe that's best handled by [a separate API](./history_and_modals.md).
+
+- _TODO: something something allowing trapping users on the page; need to figure out which interceptions we allow._
+
+- Provide an elegant layering onto or integration with the existing `window.history` API. That API is quite problematic, and we can't be tied down by a need to make every operation in the new API isomorphic to one in the old API.
+
+_TODO: figure out which of [Chris's goals and non-goals](https://docs.google.com/document/d/1eL7tOQXVw7hyV7tudS7WukT9qIsmZm0o-qGxq0wP2Ko/edit#) we haven't incorporated, but should._
+
+## Proposal
+
+### The current entry, and single-page navigations
+
+The entry point for the app history API is `window.appHistory`. Let's start with `appHistory.currentEntry`, which is an instance of the new `AppHistoryEntry` class. This class has the following readonly properties:
+
+- `key`: a user-agent-generated UUID identifying this history entry. In the past, applications have used the URL as such a key, but the URL is not guaranteed to be unique.
+
+- `url`: the URL of this history entry (as a string).
+
+- `state`: returns the application-specific state stored in the history entry (or `null` if there is none).
+
+- `sameDocument`: a boolean indicating whether this entry is for the current document, or whether navigating to it will require a full navigation (either from the network, or from the browser's back/forward cache). Note: for `appHistory.currentEntry`, this will always be `true`.
+
+For single-page applications that want to update the current entry in the same manner as today's `history.replaceState()` APIs, we have the following:
+
+```js
+// Updates the URL shown in the address bar, as well as the url property.
+appHistory.updateCurrentEntry({ url });
+
+// Only updates the state property.
+appHistory.updateCurrentEntry({ state });
+
+// Update both at once.
+appHistory.updateCurrentEntry({ url, state });
+```
+
+_TODO: more realistic example, maybe something Redux-esque like `appHistory.updateCurrentEntry({ state: {...appHistory.currentEntry.state, newKey: newValue } })`._
+
+Similarly, to push a new entry in the same manner as today's `history.pushState()`, we have the following:
+
+```js
+// Pushes a new entry onto the app history list, copying the URL and state from the current one.
+await appHistory.pushNewEntry();
+
+// Copy over the URL, but use new state:
+await appHistory.pushNewEntry({ state });
+
+// Copy over the state, but use a new URL:
+await appHistory.pushNewEntry({ url });
+
+// Don't copy over anything:
+await appHistory.pushNewEntry({ url, state });
+```
+
+As with `history.pushState()` and `history.replaceState()`, the new URL here must be same-origin and only differ in the path, query, or fragment portions from the current document's current URL. And as with those, you can use relative URLs.
+
+Note that `appHistory.pushNewEntry()` is asynchronous. As with other [navigations through the app history list](#navigation-through-the-app-history-list), pushing a new entry can be intercepted or canceled, so it will always be delayed at least one microtask.
+
+_TODO: need a realistic example of using `appHistory.pushNewEntry()` instead of `navigationEvent.respondWith()`._
+
+Crucially, `appHistory.currentEntry` stays the same regardless of what iframe navigations happen. It only reflects the current entry for the current frame. The complete list of ways the current app history entry can change are:
+
+- Via the above APIs, used by single-page apps to manage their own history entries.
+
+- A fragment navigation, which will act as `appHistory.pushNewEntry({ url: urlWithFragment })`, i.e. it will copy over the state.
+
+- A full-page navigation to a different document. This could be an existing document in the browser's back/forward cache, or a new document. In the latter case, this will generate a new entry on the new page's `window.appHistory` object, somewhat similar to `appHistory.pushNewEntry({ url: navigatedToURL, state: null })`. Note that if the navigation is cross-origin, then we'll end up in a separate app history list for that other origin.
+
+### Inspection of the app history list
+
+In addition to the current entry, the entire list of app history entries can be inspected, using `appHistory.entries()`, which returns an array of `AppHistoryEntry` instances. (Recall that all app history entries are same-origin and for the current frame, so this is not a security issue.)
+
+This solves the problem of allowing applications to reliably store state in an `AppHistoryEntry`'s `state` property: because they can inspect the values stored in previous entries at any time, it can be used as real application state storage, without needing to keep a side table like one has to do when using `history.state`.
+
+In combination with the following section, the `entries()` API also allows applications to display a UI allowing navigation through the app history list.
+
+### Navigation through the app history list
+
+The way for an application to navigate through the app history list is using `appHistory.navigateTo(key)`. For example:
+
+_TODO: realistic example of when you'd use this._
+
+Unlike the existing history API's `history.go()` method, which navigates by offset, navigating by key allows the application to not care about intermediate history entries; it just specifies its desired destination entry.
+
+There are also convenience methods, `appHistory.back()` and `appHistory.forward()`.
+
+All of these methods return promises, because navigations can be intercepted and made asynchronous by various event handlers that we're about to describe in the next section. There are then several possible outcomes:
+
+- Interceptors mark the navigation as failed, in which case the promise rejects as they indicate, and `appHistory.currentEntry` stays the same.
+
+- Interceptors cancel the navigation, in which case the promise fulfills with `false` and `appHistory.currentEntry` stays the same.
+
+- It's not possible to navigate to the given entry, e.g. `appHistory.navigateTo(key)` was given a non-existant `key`, or `appHistory.back()` was called when there's no previous entries in the app history stack. In this case also, the promise fulfills with `false` and `appHistory.currentEntry` stays the same.
+
+- The navigation succeeds, and was a same-document navigation. Then the promise fulfills with `true`,  and `appHistory.currentEntry` (as well as the URL bar, if appropriate) will update.
+
+- The navigation succeeds, and it was a different-document navigation. Then the promise will never settle, because the entire document and all its promises will disappear.
+
+### Events and navigation interception
+
+_TODO: how do we avoid trapping people? Probably they are only cancelable for same-document navigations? Maybe only for same-origin navigations?_
+
+_Need a more comprehensive "threat model" and goal model for intercepting navigations. Intercepting cross-origin navs might be useful in some cases... and is already possible with `<a>` rewriting. But e.g. back button interception is not allowed._
+
+#### Per-entry events
+
+Each `AppHistoryEntry` has a series of events which the application can react to.
+
+The application can use the `navigateto` and `navigatefrom` events to update the UI in response to a given entry becoming the current app history entry:
+
+_TODO: more realistic examples would be good._
+
+```html
+<main id="homepage">
+  This is the homepage!
+</main>
+<script>
+appHistory.currentEntry.addEventListener("navigateto", () => {
+  document.body.querySelector("#homepage").hidden = false;
+});
+appHistory.currentEntry.addEventListener("navigatefrom", () => {
+  document.body.querySelector("#homepage").hidden = true;
+});
+</script>
+```
+
+These events are also cancelable; if they are canceled, using `event.preventDefault()`, then attempts to navigate to the app history entry in question will fail:
+
+```js
+appHistory.currentEntry.addEventListener("navigatefrom", e => {
+  if (hasUnsavedData()) {
+    displayMessage("Are you sure you want to leave? You have unsaved data.");
+    e.preventDefault();
+  }
+});
+```
+
+_TODO: maybe this would be better with `respondWith()`? Then the promise could fulfill/reject..._
+
+Additionally, there's a `dispose` event, which occurs when an app history entry is permanently evicted and unreachable: for example, in the following scenario.
+
+```js
+const startingKey = appHistory.currentEntry.key;
+
+appHistory.pushNewState();
+appHistory.currentEntry.addEventListener("dispose", () => console.log(1));
+
+appHistory.pushNewState();
+appHistory.currentEntry.addEventListener("dispose", () => console.log(2));
+
+appHistory.pushNewState();
+appHistory.currentEntry.addEventListener("dispose", () => console.log(3));
+
+appHistory.navigateTo(startingKey);
+appHistory.pushNewState();
+
+// Logs 1, 2, 3 as that branch of the tree gets pruned.
+```
+
+This can be useful for cleaning up any information in secondary stores, such as `sessionStorage` or caches, when we're guaranteed to never reach those particular history entries again.
+
+_TODO: it seems like the event probably needs to include the disposed app history entry? Maybe all of these events should contain the history entry?_
+
+#### Current entry change monitoring
+
+The `window.appHistory` object has an event, `currententrychange`, which allows the application to react to any updates to the `appHistory.currentEntry` property. This includes both navigations that change its value, and calls to `appHistory.updateCurrentEntry()` that change its `state` or `url` properties.
+
+This cannot be intercepted or canceled, as it occurs after the navigation has already happened; it's just an after-the-fact notification. An example of how an application might use it is as follows:
+
+```js
+appHistory.addEventListener("currententrychange", () => {
+  document.querySelector("#order-status") = appHistory.currentEntry.state.?orderStatus ?? "";
+});
+```
+
+#### Navigation monitoring and interception
+
+Finally, the most interesting event on `window.appHistory` is the one which allows monitoring and interception of navigations: the `navigate` event. It fires on any navigation, either user-initiated or application-initiated, which would update the value of `appHistory.currentEntry`. This includes cross-origin navigations (which will take us out of the current app history list), but it does _not_ include navigations which target other windows, e.g. right click/open in new tab.
+
+The event object has several useful properties:
+
+- `userInitiated`: a boolean indicating whether the navigation is user-initiated (i.e., a click on an `<a>`, or a form submission) or application-initiated (e.g. `location.href = ...`, `appHistory.navigateTo(...)`, etc.).
+
+- `destinationEntry`: an `AppHistoryEntry` containing the information about the destination of the navigation. Note that this entry might or might not yet be in `window.appHistory.entries()`; if it is not, then its `state` will be `null`.
+
+- `sameOrigin`: a convenience boolean indicating whether the navigation is same-origin, and thus will stay in the same app history or not. (I.e., this is `(new URL(e.destinationEntry.url)).origin === self.origin`.)
+
+- `formData`: a [`FormData`](https://developer.mozilla.org/en-US/docs/Web/API/FormData) object containing form submission data, or `null` if the navigation is not a form submission.
+
+Note that you can check if the navigation will be same-document via `event.destinationEntry.sameDocument`.
+
+This event is cancelable; doing so, via `event.preventDefault()`, will prevent the navigation from going through. _TODO when would you want to do this. Maybe just use `respondWith()`._ _TODO: see above TODOs about this not always being cancelable._
+
+Additionally, the event has a special method `event.respondWith(promiseForEntryData)`. If called, this will:
+
+- Cancel the navigation.
+- Wait for the promise to settle.
+  - If it rejects, stay on the current app history entry.
+  - If it fulfills, push the destination app history entry onto the app history list, but do not do any other parts of the navigation, such as unloading the document and fetching from the network.
+
+Putting these together, we can see how to intercept all links and form submissions and turn them into single-page navigations:
+
+```js
+appHistory.addEventListener("navigate", e => {
+  // Don't muck with programmatic transitions; we assume our app is doing those on purpose.
+  if (!e.userInitiated) {
+    return;
+  }
+
+  // Don't muck with same-document navigations like fragment navigations; the default behavior is fine for those.
+  if (e.destinationEntry.sameDocument) {
+    return;
+  }
+
+  // Don't intercept cross-origin navigations; those are the domain of other pages.
+  if (!e.sameOrigin) {
+    return;
+  }
+
+  // OK, so we have a same-origin link click or form submission. Do our appropriate single-page app stuff!
+  if (e.formData) {
+    e.respondWith(processFormDataAndUpdateUI(e.formData));
+  } else {
+    e.respondWith(doSinglePageAppNav(e.destinationEntry));
+  }
+});
+```
+
+Beyond convenience, `respondWith()` serves as a useful extension point for the browser and web developer. In particular, we vaguely envision it being used to generate developer-facing timing data as part of a new web performance API, which can provide a single-page app counterpart to traditional navigation timing metrics. Additionally, it could allow the browser to display a progress bar while the promise settles, like browsers do for different-document navigations.
+
+_TODO: incorporate more from <https://github.com/philipwalton/navigation-event-proposal>, either here or in a dedicated section._
+
+_TODO: add an analytics example, probably including timing. I think that combines `navigate` with `currententrychange`._
+
+#### Complete event sequence
+
+Between the per-`AppHistoryEntry` events and the `window.appHistory` events, there's a lot of events floating around. Here's how they all come together for a typical same-document navigation (e.g. a fragment navigation, or a navigation initiated by `appHistory.pushNewEntry()`):
+
+1. `window.appHistory.currentEntry` fires `navigatefrom`.
+1. If `navigatefrom` is canceled:
+    1. If this whole process was initiated by a call to `appHistory.navigateTo()`, `appHistory.back()`, or `appHistory.forward()`, fulfill that promise with `false`.
+    1. Return.
+1. `window.appHistory` fires `navigate`. (Cancelable/`respondWith()`-able)
+1. If the event is canceled:
+    1. If this whole process was initiated by a call to `appHistory.navigateTo()`, `appHistory.back()`, or `appHistory.forward()`, fulfill that promise with `false`.
+    1. Return.
+1. If `navigateEvent.respondWith()` is called with a rejected promise:
+    1. If this whole process was initiated by a call to `appHistory.navigateTo()`, `appHistory.back()`, or `appHistory.forward()`, reject that promise with the same rejection reason.
+    1. Return.
+1. After the promise argument to `navigateEvent.respondWith()` fulfills, or after one microtask if `respondWith()` is not called:
+    1. `window.appHistory.currentEntry` is updated to its new value.
+    1. `window.appHistory.currentEntry` fires `navigateto`.
+    1. `window.appHistory` fires `currententrychange`.
+    1. Any `AppHistoryEntry` instances which are now unreachable fire `dispose` events.
+    1. If this whole process was initiated by a call to `appHistory.navigateTo()`, `appHistory.back()`, or `appHistory.forward()`, fulfill that promise with `true`.
+
+For a cross-document navigation, the sequence is very similar, except if `navigateEvent.respondWith()` is not called, then we indeed proceed to the destination document, and steps (4.a)–(4.c) happen in that destination document. (Step (4.d) does not happen at all since the promise has gone away, along with the old document.) Note that this destination document could be being restored from the browser's back/forward cache, in which case these events happen after the `pageshow` event, or the destination document could be created from scratch, in which case these events happen after the `DOMContentLoaded` event. _TODO not so sure about that last part._
+
+## Integration with the existing history API and spec
+
+_TODO: big, big, important TODO!_
+
+## Impact on back button and user agent UI
+
+_TODO: we need the same protections as `history.pushState()` has today, so it's not a 1:1 mapping; the back button might skip around. Explain this. Maybe try to make something principled like requiring user gesture (although that breaks auto-advance cases I think?). Also talk about what portion of this is solved by the modals proposal._
+
+## Security and privacy considerations
+
+Privacy-wise, this feature is neutral, due to its strict same-origin scoping. That is, it only exposes information which the application already has access to, just in a more convenient form. _TODO: probably need more reassurance since we're storing state and that always trips some alarms._
+
+_TODO: talk about security story after we figure out navigation interception._
+
+_TODO: W3C TAG security and privacy questionnaire._
+
+## Stakeholder feedback
+
+- W3C TAG: TODO file for TAG early design review
+- Browser engines:
+  - Chromium: No feedback so far
+  - Gecko: No feedback so far
+  - WebKit: No feedback so far
+- Web developers: TODO
+
+## Acknowledgments
+
+This proposal is based on [an earlier revision](https://github.com/slightlyoff/history_api/blob/55b1d7a933cfd2dccddb16668b13dbc9ff06a3f2/navigator.md) by [@tbondwilkinson](https://github.com/tbondwilkinson), which outlined all the same capabilities in a different form. It also incorporates the ideas from [philipwalton@](https://github.com/philipwalton)'s [navigation event proposal](https://github.com/philipwalton/navigation-event-proposal/tree/aa0b688eab37f906660e60af8dc49df04d33c17f).
+
+Thanks also to
+[@chrishtr](https://github.com/chrishtr),
+[@dvoytenko](https://github.com/dvoytenko),
+[@housseindjirdeh](https://github.com/housseindjirdeh), and
+[@slightlyoff](https://github.com/slightlyoff)
+for their help in exploring this space and providing feedback.
+
+## Appendix: full API surface, in Web IDL format
+
+```webidl
+partial interface Window {
+  readonly attribute AppHistory appHistory;
+};
+
+[Exposed=Window]
+interface AppHistory : EventTarget {
+  readonly attribute AppHistoryEntry currentEntry;
+  undefined updateCurrentEntry(AppHistoryEntryOptions options);
+
+  sequence<AppHistoryEntry> entries();
+
+  Promise<boolean> pushNewEntry(optional AppHistoryEntryOptions options = {});
+  Promise<boolean> navigateTo(DOMString key);
+  Promise<boolean> back();
+  Promise<boolean> forward();
+
+  readonly attribute EventHandler oncurrententrychange;
+  readonly attribute EventHandler onnavigate;
+};
+
+[Exposed=Window]
+interface AppHistoryEntry : EventTarget {
+  readonly attribute DOMString key;
+  readonly attribute USVString url;
+  readonly attribute any state;
+
+  readonly attribute EventHandler onnavigateto;
+  readonly attribute EventHandler onnavigatefrom;
+  readonly attribute EventHandler ondispose;
+};
+
+dictionary AppHistoryEntryOptions {
+  USVString url;
+  any state;
+};
+
+[Exposed=Window]
+interface AppHistoryNavigateEvent : Event {
+  constructor(DOMString type, optional AppHistoryNavigateEventInit eventInit = {});
+
+  readonly attribute boolean userInitiated;
+  readonly attribute boolean sameOrigin;
+  readonly attribute AppHistoryEntry destinationEntry;
+  readonly attribute FormData? formData;
+};
+
+dictionary AppHistoryNavigateEventInit : EventInit {
+  boolean userInitiated = false;
+  boolean sameOrigin = false;
+  required AppHistoryEntry destinationEntry;
+  FormData? formData = null;
+};
+```
