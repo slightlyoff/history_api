@@ -81,7 +81,7 @@ The following are nice-to-have goals:
 
 The following is a goal we wish we could meet, but don't believe is possible to meet while also achieving our primary goals:
 
-- Avoid an awkward transition period, where the Android back button close modals on sites that adopt this new API, but navigates history on sites that haven't adopted it. In particular, right now users generally know the Android back button works fails to close modals in web apps and avoid it when modals are open; we worry about this API causing a state where users are no longer sure which action it performs.
+- Avoid an awkward transition period, where the Android back button closes modals on sites that adopt this new API, but navigates history on sites that haven't adopted it. In particular, right now users generally know that the Android back button fails to close modals in web apps, and avoid it when modals are open. We worry about this API causing a state where users are no longer sure which action it performs.
 
 ## What developers are doing today
 
@@ -207,7 +207,7 @@ Note that some application and component developers adjust to iOS's lack of clos
 
 #### Keyboards attached to mobile devices
 
-TODO this might change the rest of the doc. https://osxdaily.com/2019/04/12/how-type-escape-key-ipad/
+TODO this might change the rest of the doc's discussion of iOS. https://osxdaily.com/2019/04/12/how-type-escape-key-ipad/
 
 ### Abuse analysis
 
@@ -241,7 +241,7 @@ hamburgerMenuButton.addEventListener('click', () => {
   // Close on clicks outside the sidebar.
   document.body.addEventListener('click', e => {
     if (e.target.closest('#sidebar') === null) {
-      watcher.close();
+      watcher.signalClose();
     }
   });
 });
@@ -264,7 +264,7 @@ class MyPicker extends HTMLElement {
     this.#overlay = /* ... */;
     this.#overlay.hidden = true;
     this.#overlay.querySelector('.close-button').addEventListener('click', () => {
-      this.#watcher.close();
+      this.#watcher.signalClose();
     });
 
     this.#button.onclick = () => {
@@ -344,7 +344,7 @@ We would add the same restrictions on this event as `ModalCloseWatcher` has: it 
 
 Similarly, `<dialog>`'s existing `close()` method would, if called from user activation, trigger the `beforeclose` event.
 
-In general, we can think of this as if `<dialog>` is implemented under the hood using `ModalCloseWatcher`. Likely, it would be, in implementations and the specification. The web developer would not see this, however, since directly exposing it would be redundant with `<dialog>`'s existing functionality. That is, it would be awkward to exose something like `dialogEl.closeWatcher`, since it would lead to confusing situations like `dialogEl.closeWatcher.close()` living alongside `dialogEl.close()`, or `dialogEl.closeWatcher.addEventListener("close", ...)` living alongside `dialogEl.addEventListener("close", ...)`.
+In general, we can think of this as if `<dialog>` is implemented under the hood using `ModalCloseWatcher`. Likely, it would be, in implementations and the specification. The web developer would not see this, however, since directly exposing it would be redundant with `<dialog>`'s existing functionality. That is, it would be awkward to exose something like `dialogEl.closeWatcher`, since it would lead to confusing situations like `dialogEl.closeWatcher.signalClose()` living alongside `dialogEl.close()`, or `dialogEl.closeWatcher.addEventListener("close", ...)` living alongside `dialogEl.addEventListener("close", ...)`.
 
 ### Unifying existing close signals
 
