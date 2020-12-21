@@ -213,7 +213,7 @@ We have previously considered (in private docs) a more fullsome rewrite of the h
 
 ### Service Worker Navigation Events
 
-It's possible control the responses for a document's content inside a Service Worker, and there are [proposals](https://github.com/WICG/sw-launch) for handling some subset of navigation disposition (new window? new tab? re-use?) from within that context. These aren't particularly satisfyign from both a performance and programmability perspecitve. Service Workers may be shut down and would need to be restarted to handle decisions about if/how to navigate. They also lack data to most DOM data, including form information, making it complex to offload enough state to them to make decisions. It also isn't clear that it's good layering to invoke them here.
+It's possible control the responses for a document's content inside a Service Worker, and there are [proposals](https://github.com/WICG/sw-launch) for handling some subset of navigation disposition (new window? new tab? re-use?) from within that context. These aren't particularly satisfying from both a performance and programmability perspecitve. Service Workers may be shut down and would need to be restarted to handle decisions about if/how to navigate. They also lack data to most DOM data, including form information, making it complex to offload enough state to them to make decisions. It also isn't clear that it's good layering to invoke them here.
 
 As a final reason not to go this route, Service Workers install asynchronously and may not be available in time to catch some navigations. The proposed deisgn does not have this problem.
 
