@@ -401,9 +401,9 @@ The authors of this proposal find this alternative quite attractive, and welcome
 
 This feature has no security considerations to speak of, as a purely DOM API.
 
-Regarding privacy, this proposal should be slightly privacy-positive, as it masks platform-specific user interaction patterns behind a uniform cross-platform interface.
+Regarding privacy, this proposal does not expose any information that was not already available via other means, such as `keydown` listeners.
 
-TODO: W3C TAG security and privacy questionnaire.
+See the [W3C TAG Security and Privacy Questionnaire answers](./history_and_modals_spq.md) for more.
 
 ## Stakeholder feedback
 
