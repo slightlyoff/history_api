@@ -141,7 +141,7 @@ Crucially, `appHistory.currentEntry` stays the same regardless of what iframe na
 
 ### Inspection of the app history list
 
-In addition to the current entry, the entire list of app history entries can be inspected, using `appHistory.entries()`, which returns an array of `AppHistoryEntry` instances. (Recall that all app history entries are same-origin and for the current frame, so this is not a security issue.)
+In addition to the current entry, the entire list of app history entries can be inspected, using `appHistory.entries()`, which returns an array of `AppHistoryEntry` instances. (Recall that all app history entries are same-origin contiguous entries for the current frame, so this is not a security issue.)
 
 This solves the problem of allowing applications to reliably store state in an `AppHistoryEntry`'s `state` property: because they can inspect the values stored in previous entries at any time, it can be used as real application state storage, without needing to keep a side table like one has to do when using `history.state`.
 
@@ -232,7 +232,7 @@ appHistory.pushNewState();
 
 This can be useful for cleaning up any information in secondary stores, such as `sessionStorage` or caches, when we're guaranteed to never reach those particular history entries again.
 
-_TODO: it seems like the event probably needs to include the disposed app history entry? Maybe all of these events should contain the history entry?_
+Note that in the event handler for these events, `event.target` will be the relevant `AppHistoryEntry`, so that the event handler can use its properties (like `state`, `key`, or `url`) as needed.
 
 #### Current entry change monitoring
 
@@ -339,7 +339,7 @@ _TODO: we need the same protections as `history.pushState()` has today, so it's 
 
 ## Security and privacy considerations
 
-Privacy-wise, this feature is neutral, due to its strict same-origin scoping. That is, it only exposes information which the application already has access to, just in a more convenient form. _TODO: probably need more reassurance since we're storing state and that always trips some alarms._
+Privacy-wise, this feature is neutral, due to its strict same-origin contiguous entry scoping. That is, it only exposes information which the application already has access to, just in a more convenient form. _TODO: probably need more reassurance since we're storing state and that always trips some alarms._
 
 _TODO: talk about security story after we figure out navigation interception._
 
