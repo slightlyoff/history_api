@@ -16,11 +16,14 @@ This new API layers on top of the existing API and specification infrastructure,
   - [The current entry, and single-page navigations](#the-current-entry-and-single-page-navigations)
   - [Inspection of the app history list](#inspection-of-the-app-history-list)
   - [Navigation through the app history list](#navigation-through-the-app-history-list)
-  - [Events and navigation interception](#events-and-navigation-interception)
-    - [Per-entry events](#per-entry-events)
-    - [Current entry change monitoring](#current-entry-change-monitoring)
-    - [Navigation monitoring and interception](#navigation-monitoring-and-interception)
-    - [Complete event sequence](#complete-event-sequence)
+  - [Navigation monitoring and interception](#navigation-monitoring-and-interception)
+    - [Example: replacing navigations with single-page app navigations](#example-replacing-navigations-with-single-page-app-navigations)
+    - [Example: route guards](#example-route-guards)
+    - [Example: affiliate links](#example-affiliate-links)
+    - [Example: gathering single-page app navigation analytics](#example-gathering-single-page-app-navigation-analytics)
+  - [Per-entry events](#per-entry-events)
+  - [Current entry change monitoring](#current-entry-change-monitoring)
+  - [Complete event sequence](#complete-event-sequence)
 - [Integration with the existing history API and spec](#integration-with-the-existing-history-api-and-spec)
 - [Impact on back button and user agent UI](#impact-on-back-button-and-user-agent-ui)
 - [Security and privacy considerations](#security-and-privacy-considerations)
@@ -169,13 +172,113 @@ All of these methods return promises, because navigations can be intercepted and
 
 - The navigation succeeds, and it was a different-document navigation. Then the promise will never settle, because the entire document and all its promises will disappear.
 
-### Events and navigation interception
+### Navigation monitoring and interception
 
-_TODO: how do we avoid trapping people? Probably they are only cancelable for same-document navigations? Maybe only for same-origin navigations?_
+The most interesting event on `window.appHistory` is the one which allows monitoring and interception of navigations: the `navigate` event. It fires on any navigation, either user-initiated or application-initiated, which would update the value of `appHistory.currentEntry`. This includes cross-origin navigations (which will take us out of the current app history list), but it does _not_ include navigations which target other windows, e.g. right click/open in new tab.
 
-_Need a more comprehensive "threat model" and goal model for intercepting navigations. Intercepting cross-origin navs might be useful in some cases... and is already possible with `<a>` rewriting. But e.g. back button interception is not allowed._
+The event object has several useful properties:
 
-#### Per-entry events
+- `userInitiated`: a boolean indicating whether the navigation is user-initiated (i.e., a click on an `<a>`, or a form submission) or application-initiated (e.g. `location.href = ...`, `appHistory.navigateTo(...)`, etc.).
+
+- `destinationEntry`: an `AppHistoryEntry` containing the information about the destination of the navigation. Note that this entry might or might not yet be in `window.appHistory.entries()`; if it is not, then its `state` will be `null`.
+
+- `sameOrigin`: a convenience boolean indicating whether the navigation is same-origin, and thus will stay in the same app history or not. (I.e., this is `(new URL(e.destinationEntry.url)).origin === self.origin`.)
+
+- `formData`: a [`FormData`](https://developer.mozilla.org/en-US/docs/Web/API/FormData) object containing form submission data, or `null` if the navigation is not a form submission.
+
+Note that you can check if the navigation will be same-document via `event.destinationEntry.sameDocument`.
+
+In some cases, the event is cancelable via `event.preventDefault()`, which prevents the navigation from going through. Specifically:
+
+- It is cancelable for user-initiated navigations via `<a>` elements.
+- It is cancelable for programmatically-initiated navigations, via mechanisms such as `location.href = ...` or `aElement.click()`.
+- It is _not_ cancelable for user-initiated navigations via browser UI, such as the URL bar or bookmarks.
+- It is _not_ cancelable for programmatically-initiated navigations originating from other windows, such as `window.open(url, "nameOfAnotherWindow")`.
+
+These restrictions are designed so that canceling the `navigate` event gives web developers an easier mechanism to do things they can already do. That is, web developers can already intercept `<a>` `click` events, or modify their code that would set `location.href`. It does not give them any new powers, and in particular it does not allow trapping the user on a page by intercepting the back button or URL bar navigations.
+
+Additionally, the event has a special method `event.respondWith(promiseForEntryData)`. If called, this will:
+
+- Cancel the event (and thus the navigation).
+- Wait for the promise to settle.
+  - If it rejects, stay on the current app history entry.
+  - If it fulfills, push the destination app history entry onto the app history list, but do not do any other parts of the navigation, such as unloading the document and fetching from the network.
+
+Beyond convenience, `respondWith()` serves as a useful extension point for the browser and web developer. In particular, we vaguely envision it being used to generate developer-facing timing data as part of a new web performance API, which can provide a single-page app counterpart to traditional navigation timing metrics. Additionally, it could allow the browser to display a progress bar while the promise settles, like browsers do for different-document navigations.
+
+_TODO: incorporate more from <https://github.com/philipwalton/navigation-event-proposal>, either here or in a dedicated section._
+
+#### Example: replacing navigations with single-page app navigations
+
+Using the various properties of the event object, plus the `respondWith()` method, we can use code like the following to intercept all links and form submissions and turn them into single-page navigations:
+
+```js
+appHistory.addEventListener("navigate", e => {
+  // Don't muck with programmatic transitions; we assume our app is doing those on purpose.
+  if (!e.userInitiated) {
+    return;
+  }
+
+  // Don't muck with same-document navigations like fragment navigations; the default behavior is fine for those.
+  if (e.destinationEntry.sameDocument) {
+    return;
+  }
+
+  // Don't intercept cross-origin navigations; those are the domain of other pages.
+  if (!e.sameOrigin) {
+    return;
+  }
+
+  // OK, so we have a same-origin link click or form submission. Do our appropriate single-page app stuff!
+  if (e.formData) {
+    e.respondWith(processFormDataAndUpdateUI(e.formData));
+  } else {
+    e.respondWith(doSinglePageAppNav(e.destinationEntry));
+  }
+});
+```
+
+#### Example: route guards
+
+A common scenario in web applications with a client-side router is to perform a "redirect" to a login page if you try to access login-guarded information. The following is an example of how one could implement this using the `navigate` event:
+
+```js
+appHistory.addEventListener("navigate", e => {
+  const url = new URL(e.destinationEntry.url);
+  if (url.pathname === "/user-profile") {
+    e.respondWith((async () => {
+      const loginPage = await (await fetch("/login")).text();
+      document.querySelector("main").innerHTML = loginPage;
+
+      return { url: "/login" };
+    })());
+  }
+});
+```
+
+In practice, this might be hidden behind a full router framework, e.g. the Angular framework has a notion of "[route guards](https://angular.io/guide/router#preventing-unauthorized-access)". Then, the framework would be the one listening to the `navigate` event, looping through its list of registered route guards to figure out the appropriate reaction.
+
+#### Example: affiliate links
+
+A common [query](https://stackoverflow.com/q/11798336/3191) is how to append affiliate IDs onto links. Although this can be done server-side, sometimes it is convenient to do so client side, especially in the case of dynamic content. Today, this requires intercepting `click` events on `<a>` elements, or using a `MutationObserver` to watch for new link insertions. The `navigate` event provides a simpler way to do this:
+
+```js
+appHistory.addEventListener("navigate", e => {
+  const url = new URL(e.destinationEntry.url);
+  if (url.hostname === "store.example.com") {
+    url.queryParams.set("affiliateId", "ead21623-781e-442f-a2c4-6cc1b2a9fda2");
+
+    e.preventDefault();
+    location.href = url;
+  }
+});
+```
+
+#### Example: gathering single-page app navigation analytics
+
+_TODO: add an analytics example, probably including timing. I think that combines `navigate` with `currententrychange`._
+
+### Per-entry events
 
 Each `AppHistoryEntry` has a series of events which the application can react to.
 
@@ -234,7 +337,7 @@ This can be useful for cleaning up any information in secondary stores, such as 
 
 Note that in the event handler for these events, `event.target` will be the relevant `AppHistoryEntry`, so that the event handler can use its properties (like `state`, `key`, or `url`) as needed.
 
-#### Current entry change monitoring
+### Current entry change monitoring
 
 The `window.appHistory` object has an event, `currententrychange`, which allows the application to react to any updates to the `appHistory.currentEntry` property. This includes both navigations that change its value, and calls to `appHistory.updateCurrentEntry()` that change its `state` or `url` properties.
 
@@ -246,66 +349,7 @@ appHistory.addEventListener("currententrychange", () => {
 });
 ```
 
-#### Navigation monitoring and interception
-
-Finally, the most interesting event on `window.appHistory` is the one which allows monitoring and interception of navigations: the `navigate` event. It fires on any navigation, either user-initiated or application-initiated, which would update the value of `appHistory.currentEntry`. This includes cross-origin navigations (which will take us out of the current app history list), but it does _not_ include navigations which target other windows, e.g. right click/open in new tab.
-
-The event object has several useful properties:
-
-- `userInitiated`: a boolean indicating whether the navigation is user-initiated (i.e., a click on an `<a>`, or a form submission) or application-initiated (e.g. `location.href = ...`, `appHistory.navigateTo(...)`, etc.).
-
-- `destinationEntry`: an `AppHistoryEntry` containing the information about the destination of the navigation. Note that this entry might or might not yet be in `window.appHistory.entries()`; if it is not, then its `state` will be `null`.
-
-- `sameOrigin`: a convenience boolean indicating whether the navigation is same-origin, and thus will stay in the same app history or not. (I.e., this is `(new URL(e.destinationEntry.url)).origin === self.origin`.)
-
-- `formData`: a [`FormData`](https://developer.mozilla.org/en-US/docs/Web/API/FormData) object containing form submission data, or `null` if the navigation is not a form submission.
-
-Note that you can check if the navigation will be same-document via `event.destinationEntry.sameDocument`.
-
-This event is cancelable; doing so, via `event.preventDefault()`, will prevent the navigation from going through. _TODO when would you want to do this. Maybe just use `respondWith()`._ _TODO: see above TODOs about this not always being cancelable._
-
-Additionally, the event has a special method `event.respondWith(promiseForEntryData)`. If called, this will:
-
-- Cancel the navigation.
-- Wait for the promise to settle.
-  - If it rejects, stay on the current app history entry.
-  - If it fulfills, push the destination app history entry onto the app history list, but do not do any other parts of the navigation, such as unloading the document and fetching from the network.
-
-Putting these together, we can see how to intercept all links and form submissions and turn them into single-page navigations:
-
-```js
-appHistory.addEventListener("navigate", e => {
-  // Don't muck with programmatic transitions; we assume our app is doing those on purpose.
-  if (!e.userInitiated) {
-    return;
-  }
-
-  // Don't muck with same-document navigations like fragment navigations; the default behavior is fine for those.
-  if (e.destinationEntry.sameDocument) {
-    return;
-  }
-
-  // Don't intercept cross-origin navigations; those are the domain of other pages.
-  if (!e.sameOrigin) {
-    return;
-  }
-
-  // OK, so we have a same-origin link click or form submission. Do our appropriate single-page app stuff!
-  if (e.formData) {
-    e.respondWith(processFormDataAndUpdateUI(e.formData));
-  } else {
-    e.respondWith(doSinglePageAppNav(e.destinationEntry));
-  }
-});
-```
-
-Beyond convenience, `respondWith()` serves as a useful extension point for the browser and web developer. In particular, we vaguely envision it being used to generate developer-facing timing data as part of a new web performance API, which can provide a single-page app counterpart to traditional navigation timing metrics. Additionally, it could allow the browser to display a progress bar while the promise settles, like browsers do for different-document navigations.
-
-_TODO: incorporate more from <https://github.com/philipwalton/navigation-event-proposal>, either here or in a dedicated section._
-
-_TODO: add an analytics example, probably including timing. I think that combines `navigate` with `currententrychange`._
-
-#### Complete event sequence
+### Complete event sequence
 
 Between the per-`AppHistoryEntry` events and the `window.appHistory` events, there's a lot of events floating around. Here's how they all come together for a typical same-document navigation (e.g. a fragment navigation, or a navigation initiated by `appHistory.pushNewEntry()`):
 
