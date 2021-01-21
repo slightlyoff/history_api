@@ -45,7 +45,7 @@ Web application developers, as well as the developers of router libraries for si
 
 - Synchronizing application or UI state with the current position in the history stack, so that user- or application-initiated navigations through the history stack appropriately restores application/UI state.
 
-The existing [history API](https://developer.mozilla.org/en-US/docs/Web/API/History) is difficult to use for these purposes. The fundamental problem is that `window.history` surfaces the joint session history of a browsing session, and so gets updated in response to navigations in nested frames, or cross-origin navigations. A web application cares about its own, same-origin, current-frame history entries, and having to deal with the entire joint session history makes this very painful. Even in a carefully-crafted web app, a single iframe can completely mess up the application's history stack.
+The existing [history API](https://developer.mozilla.org/en-US/docs/Web/API/History) is difficult to use for these purposes. The fundamental problem is that `window.history` surfaces the joint session history of a browsing session, and so gets updated in response to navigations in nested frames, or cross-origin navigations. Although this is an important view for the user, especially in terms of how it impacts their back button, it doesn't map well to web application development. A web application cares about its own, same-origin, current-frame history entries, and having to deal with the entire joint session history makes this very painful. Even in a carefully-crafted web app, a single iframe can completely mess up the application's history stack.
 
 The existing history API also has a number of less-fundamental, but still very painful, problems around how its API shape has grown organically, with only very slight considerations for single-page app architectures. For example, it provides no mechanism for intercepting navigations; to do this, developers have to intercept all `click` events, cancel them, and perform the appropriate `history.pushState()` call. The `history.state` property is a very bad storage mechanism for application and UI state, as it disappears and reappears as you transition throughout the history stack, instead of allowing access to earlier entries in the stack. And the ability to navigate throughout the stack is limited to numeric offsets, with `history.go(-2)` or similar; thus, navigating back to an actual specific state requires keeping a side table mapping history indices to application states.
 
@@ -144,11 +144,11 @@ Crucially, `appHistory.currentEntry` stays the same regardless of what iframe na
 
 ### Inspection of the app history list
 
-In addition to the current entry, the entire list of app history entries can be inspected, using `appHistory.entries()`, which returns an array of `AppHistoryEntry` instances. (Recall that all app history entries are same-origin contiguous entries for the current frame, so this is not a security issue.)
+In addition to the current entry, the entire list of app history entries can be inspected, using `appHistory.entries`, which returns a frozen array of `AppHistoryEntry` instances. (Recall that all app history entries are same-origin contiguous entries for the current frame, so this is not a security issue.)
 
 This solves the problem of allowing applications to reliably store state in an `AppHistoryEntry`'s `state` property: because they can inspect the values stored in previous entries at any time, it can be used as real application state storage, without needing to keep a side table like one has to do when using `history.state`.
 
-In combination with the following section, the `entries()` API also allows applications to display a UI allowing navigation through the app history list.
+In combination with the following section, the `entries` API also allows applications to display a UI allowing navigation through the app history list.
 
 ### Navigation through the app history list
 
@@ -180,7 +180,7 @@ The event object has several useful properties:
 
 - `userInitiated`: a boolean indicating whether the navigation is user-initiated (i.e., a click on an `<a>`, or a form submission) or application-initiated (e.g. `location.href = ...`, `appHistory.navigateTo(...)`, etc.).
 
-- `destinationEntry`: an `AppHistoryEntry` containing the information about the destination of the navigation. Note that this entry might or might not yet be in `window.appHistory.entries()`; if it is not, then its `state` will be `null`.
+- `destinationEntry`: an `AppHistoryEntry` containing the information about the destination of the navigation. Note that this entry might or might not yet be in `window.appHistory.entries`; if it is not, then its `state` will be `null`.
 
 - `sameOrigin`: a convenience boolean indicating whether the navigation is same-origin, and thus will stay in the same app history or not. (I.e., this is `(new URL(e.destinationEntry.url)).origin === self.origin`.)
 
@@ -393,11 +393,42 @@ For a cross-document navigation, the sequence is very similar, except if `naviga
 
 ## Integration with the existing history API and spec
 
-_TODO: big, big, important TODO!_
+An `AppHistoryEntry` corresponds directly to a [session history entry](https://html.spec.whatwg.org/#session-history-entry) from the existing HTML specification. However, not every session history entry would have a corresponding `AppHistoryEntry`: `AppHistoryEntry` objects only exist for session history entries which are same-origin to the current one, and contiguous.
+
+Example: if a browsing context contains history entries with the URLs
+
+1. `https://example.com/foo`
+1. `https://example.com/bar`
+1. `https://other.example.com/whatever`
+1. `https://example.com/baz`
+
+then, if the current entry is (4), there would only be one `AppHistoryEntry` in `appHistory.entries`, corresponding to (4) itself. If the current entry is (2), then there would be two `AppHistoryEntries` in `appHistory.entries`, corresponding to (1) and (2).
+
+Furthermore, unlike the view of history presented by `window.history`, `window.appHistory` only gives a view onto session history entries for the current browsing context; it does not present the joint session history, i.e. it is not impacted by frames.
+
+To make this correspondence work, every spec-level session history entry would gain two new fields:
+
+- key, containing a browser-generated UUID. This is what backs `appHistoryEntry.key`.
+- app history state, containing a JavaScript value. This is what backs `appHistoryEntry.state`.
+
+Note that the "app history state" field has no interaction with the existing "serialized state" field, which is what backs `history.state`. This route was chosen for a few reasons:
+
+- The desired semantics of `AppHistoryEntry` state is that it be carried over on fragment navigations, whereas `history.state` is not carried over. (This is a hard blocker.)
+- A clean separation can help when a page contains code that uses both `window.history` and `window.appHistory`. That is, it's convenient that existing code using `window.history` does not inadvertently mess with new code that does state management using `window.appHistory`.
+- Today, the serialized state of a session history entry is only exposed when that entry is the current one. The app history API exposes `appHistoryEntry.state` for all entries, via `appHistory.entries[i].state`. This is not a security issue since all app history entries are same-origin contiguous, but if we exposed the serialized state value even for non-current entries, it might break some assumptions of existing code.
+- We're still having some discussions about making `appHistoryEntry.state` into something more structured, like a key/value store instead of an arbitrary JavaScript value. If we did that, using a new field would be better, so that the structure couldn't be destroyed by code that does `history.state = "a string"` or similar.
+
+Apart from these new fields, the session history entries which correspond to `AppHistoryEntry` objects will continue to manage other fields like document, scroll restoration mode, scroll position data, and persisted user state behind the scenes, in the usual way. The serialized state, title, and browsing context name fields would continue to work if they were set or accessed via the usual APIs, but they don't have any manifestation inside the app history APIs, and will be left as null by applications that avoid `window.history` and `window.name`.
+
+_TODO: actually, we should probably expose scroll restoration mode, like `history.scrollRestoration`? That API has legitimate use cases, and we'd like to allow people to never touch `window.history`..._
+
+Finally, all the higher-level mechanisms of session history entry management, such as the interaction with navigation, continue to work as they did before; the correspondence to `AppHistoryEntry` APIs does not change the processing there.
 
 ## Impact on back button and user agent UI
 
-_TODO: we need the same protections as `history.pushState()` has today, so it's not a 1:1 mapping; the back button might skip around. Explain this. Maybe try to make something principled like requiring user gesture (although that breaks auto-advance cases I think?). Also talk about what portion of this is solved by the modals proposal._
+The app history API doesn't change anything about how user agents implement their UI: it's really about developer-facing affordances. Users still care about the joint session history, and so that will continue to be presented in UI surfaces like holding down the back button. Similarly, pressing the back button will continue to navigate through the joint session history, potentially across origins and out of the current app history (into a new app history, on the new origin).
+
+In particular, user agents can continue to refine their mapping of UI to joint session history to give a better experience. For example, in some cases user agents today have the back button skip joint session history entries which were created without user interaction. We expect this heuristic would continue to be applied for `appHistory.pushNewEntry()`, just like it is for today's `history.pushState()`.
 
 ## Security and privacy considerations
 
@@ -439,7 +470,7 @@ interface AppHistory : EventTarget {
   readonly attribute AppHistoryEntry currentEntry;
   undefined updateCurrentEntry(AppHistoryEntryOptions options);
 
-  sequence<AppHistoryEntry> entries();
+  readonly attribute FrozenArray<AppHistoryEntry> entries;
 
   Promise<boolean> pushNewEntry(optional AppHistoryEntryOptions options = {});
   Promise<boolean> navigateTo(DOMString key);
