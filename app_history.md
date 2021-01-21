@@ -195,14 +195,17 @@ In some cases, the event is cancelable via `event.preventDefault()`, which preve
 - It is _not_ cancelable for user-initiated navigations via browser UI, such as the URL bar or bookmarks.
 - It is _not_ cancelable for programmatically-initiated navigations originating from other windows, such as `window.open(url, "nameOfAnotherWindow")`.
 
+_TODO: should the event even fire at all, for these latter two cases?_
+
 These restrictions are designed so that canceling the `navigate` event gives web developers an easier mechanism to do things they can already do. That is, web developers can already intercept `<a>` `click` events, or modify their code that would set `location.href`. It does not give them any new powers, and in particular it does not allow trapping the user on a page by intercepting the back button or URL bar navigations.
 
-Additionally, the event has a special method `event.respondWith(promiseForEntryData)`. If called, this will:
+Additionally, the event has a couple of special methods. The first is `event.respondWith(promise)`. If called, this will:
 
 - Cancel the event (and thus the navigation).
 - Wait for the promise to settle.
   - If it rejects, stay on the current app history entry.
   - If it fulfills, push the destination app history entry onto the app history list, but do not do any other parts of the navigation, such as unloading the document and fetching from the network.
+- For the duration of the promise settling, any browser loading UI such as a spinner will behave as if it were doing a cross-document navigation.
 
 Beyond convenience, `respondWith()` serves as a useful extension point for the browser and web developer. In particular, we vaguely envision it being used to generate developer-facing timing data as part of a new web performance API, which can provide a single-page app counterpart to traditional navigation timing metrics. Additionally, it could allow the browser to display a progress bar while the promise settles, like browsers do for different-document navigations.
 
@@ -238,7 +241,16 @@ appHistory.addEventListener("navigate", e => {
 });
 ```
 
-#### Example: route guards
+Here, `doSinglePageAppNav` and `processFormDataAndUpdateUI` are functions that can return a promise. For example:
+
+```js
+async function doSinglePageAppNav(destinationEntry) {
+  const htmlFromTheServer = await (await fetch(destinationEntry.url)).text();
+  document.querySelector("main").innerHTML = htmlFromTheServer;
+}
+```
+
+#### Example: single-page app "redirects"
 
 A common scenario in web applications with a client-side router is to perform a "redirect" to a login page if you try to access login-guarded information. The following is an example of how one could implement this using the `navigate` event:
 
@@ -246,17 +258,23 @@ A common scenario in web applications with a client-side router is to perform a 
 appHistory.addEventListener("navigate", e => {
   const url = new URL(e.destinationEntry.url);
   if (url.pathname === "/user-profile") {
-    e.respondWith((async () => {
-      const loginPage = await (await fetch("/login")).text();
-      document.querySelector("main").innerHTML = loginPage;
+    // Cancel the navigation:
+    e.preventDefault();
 
-      return { url: "/login" };
-    })());
+    // Stop further `navigate` event handlers from running:
+    e.stopImmediatePropogation();
+
+    // Do another navigation to /login, which will fire a new `navigate` event:
+    location.href = "/login";
   }
 });
 ```
 
-In practice, this might be hidden behind a full router framework, e.g. the Angular framework has a notion of "[route guards](https://angular.io/guide/router#preventing-unauthorized-access)". Then, the framework would be the one listening to the `navigate` event, looping through its list of registered route guards to figure out the appropriate reaction.
+_TODO: should these be combined into a helper method like `e.redirect("/login")`? But, the next example is also like a redirect, and it doesn't want the `stopImmediatePropogation()` part..._
+
+In practice, this might be hidden behind a full router framework, e.g. the Angular framework has a notion of [route guards](https://angular.io/guide/router#preventing-unauthorized-access). Then, the framework would be the one listening to the `navigate` event, looping through its list of registered route guards to figure out the appropriate reaction.
+
+_TODO: if you combine this example with the previous one, it's important that this route guard handler happen before the general SPA nav handler. Is that a coordination problem? Could we solve it with separate `navigate` and `beforenavigate` events?_
 
 #### Example: affiliate links
 
