@@ -19,6 +19,7 @@ This new API layers on top of the existing API and specification infrastructure,
     - [Example: replacing navigations with single-page app navigations](#example-replacing-navigations-with-single-page-app-navigations)
     - [Example: single-page app "redirects"](#example-single-page-app-redirects)
     - [Example: affiliate links](#example-affiliate-links)
+  - [Queued up single-page navigations](#queued-up-single-page-navigations)
   - [Per-entry events](#per-entry-events)
   - [Current entry change monitoring](#current-entry-change-monitoring)
   - [Complete event sequence](#complete-event-sequence)
@@ -160,7 +161,7 @@ await appHistory.pushNewEntry({ url, state });
 
 As with `history.pushState()` and `history.replaceState()`, the new URL here must be same-origin and only differ in the path, query, or fragment portions from the current document's current URL. And as with those, you can use relative URLs.
 
-Note that `appHistory.pushNewEntry()` is asynchronous. As with other [navigations through the app history list](#navigation-through-the-app-history-list), pushing a new entry can be intercepted or canceled, so it will always be delayed at least one microtask.
+Note that `appHistory.pushNewEntry()` is asynchronous. As with other [navigations through the app history list](#navigation-through-the-app-history-list), pushing a new entry can be [intercepted or canceled](#navigation-monitoring-and-interception), so it will always be delayed at least one microtask.
 
 In general, you would use `appHistory.updateCurrentEntry()` and `appHistory.pushNewEntry()` in similar scenarios to when you would use `history.pushState()` and `history.replaceState()`. However, note that in the app history API, there are some cases where you don't have to use `appHistory.pushNewEntry()`; see [the discussion below](#using-navigate-handlers-plus-non-history-apis) for more on that subject.
 
@@ -171,6 +172,8 @@ Crucially, `appHistory.currentEntry` stays the same regardless of what iframe na
 - A fragment navigation, which will act as `appHistory.pushNewEntry({ url: urlWithFragment, state: appHistory.currentEntry.state })`, i.e. it will copy over the state.
 
 - A full-page navigation to a different document. This could be an existing document in the browser's back/forward cache, or a new document. In the latter case, this will generate a new entry on the new page's `window.appHistory` object, somewhat similar to `appHistory.pushNewEntry({ url: navigatedToURL, state: null })`. Note that if the navigation is cross-origin, then we'll end up in a separate app history list for that other origin.
+
+Finally, note that these APIs also have a callback-based variant for dealing with queued navigations. We discuss those [below](#queued-up-single-page-navigations), since examples involving them are easier to write after we have shown the basics of [navigation interception](#navigation-monitoring-and-interception).
 
 ### Inspection of the app history list
 
@@ -364,6 +367,59 @@ appHistory.addEventListener("navigate", e => {
 ```
 
 _TODO: it feels like this should be less disruptive than a cancel-and-perform-new-navigation; it's just a tweak to the outgoing navigation. Using the same code as the previous example feels wrong. Some brainstorming needed._
+
+### Queued up single-page navigations
+
+Consider trying to code a "next" button that performs a single-page navigation. This can be prone to race conditions if navigations are not instant. For example, if you're on `/photos/1` and click the next button twice, you should end up at `photos/3`, even if `photos/2` takes a long time to load and the click handler executes while the URL bar still reads `/photos/1`.
+
+Concretely, code such as the following is buggy:
+
+```js
+let currentPhoto = 1;
+
+document.querySelector("#next").onclick = async () => {
+  await appHistory.pushNewEntry({ url: `/photos/${currentPhoto + 1}` });
+};
+
+appHistory.addEventListener("navigate", e => {
+  const photoNumber = photoNumberFromURL(e.destinationEntry.url);
+
+  if (photoNumber) {
+    e.respondWith((async () => {
+      const blob = await (await fetch(`/raw-photos/${photoNumber}.jpg`)).blob();
+      const url = URL.createObjectURL(blob);
+      document.querySelector("#current-photo").src = url;
+
+      currentPhoto = photoNumber;
+    })());
+  }
+});
+
+function photoNumberFromURL(url) {
+  const result = /\/photos/(\d+)/.exec((new URL(url)).pathname);
+  if (result) {
+    return Number(result[1]);
+  }
+  return null;
+}
+```
+
+To fix this, the `appHistory.pushNewEntry()` and `appHistory.updateCurrentEntry()` APIs have callback variants. The callback will only be called after all ongoing navigations have finished. This allows non-buggy code such as the following:
+
+```js
+document.querySelector("#next").onclick = async () => {
+  await appHistory.pushNewEntry(() => {
+    const photoNumber = photoNumberFromURL(appHistory.currentEntry.url);
+    return { url: `/photos/${photoNumber + 1}` };
+  });
+};
+```
+
+Although not shown in the above example, the callback could also return a `state` value.
+
+_TODO: should the callback be able to say "nevermind, I don't care anymore, please don't navigate"? We could let the *caller* do that by passing an `AbortSignal` after the callback... Needs thinking about in the general context of multiple navigations ongoing._
+
+In general, the idea of these callback variants is that there are cases where the new URL or state is not determined synchronously, and is a function of the current state of the world at the time the navigation is ready to be performed.
 
 ### Per-entry events
 
@@ -681,11 +737,14 @@ partial interface Window {
 [Exposed=Window]
 interface AppHistory : EventTarget {
   readonly attribute AppHistoryEntry currentEntry;
-  undefined updateCurrentEntry(optional AppHistoryEntryOptions options = {});
-
   readonly attribute FrozenArray<AppHistoryEntry> entries;
 
+  undefined updateCurrentEntry(optional AppHistoryEntryOptions options = {});
+  undefined updateCurrentEntry(AppHistoryNavigationCallback);
+
   Promise<undefined> pushNewEntry(optional AppHistoryEntryOptions options = {});
+  Promise<undefined> pushNewEntry(AppHistoryNavigationCallback callback);
+
   Promise<undefined> navigateTo(DOMString key);
   Promise<undefined> back();
   Promise<undefined> forward();
@@ -709,6 +768,8 @@ dictionary AppHistoryEntryOptions {
   USVString url;
   any state;
 };
+
+callback AppHistoryNavigationCallback = AppHistoryEntryOptions ();
 
 [Exposed=Window]
 interface AppHistoryNavigateEvent : Event {
