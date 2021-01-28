@@ -1,7 +1,5 @@
 # App History API
 
-_Note: the name is very bikesheddable. A previous name was "navigator" but `window.navigator` already exists._
-
 The web's existing [history API](https://developer.mozilla.org/en-US/docs/Web/API/History) is problematic for a number of reasons, which makes it hard to use for web applications. This proposal introduces a new one, which is more directly usable by web application developers to address the use cases they have for history introspection, mutation, and observation/interception.
 
 This new API layers on top of the existing API and specification infrastructure, with well-defined interaction points. The main differences are that it is scoped to the current origin and frame, and it is designed to be pleasant to use instead of being a historical accident with many sharp edges.
@@ -58,13 +56,17 @@ To hear more detail about these problems, in the words of a web developer, see [
 
 ## Goals
 
-Our primary goals are as follows:
+Overall, our guiding principle is to make it easy for web application developers to write applications which give good user experiences in terms of the history stack, back button, and other navigation UI (such as open-in-new-tab). We believe this is too hard today with the `window.history` API.
+
+From an API perspective, our primary goals are as follows:
 
 - Allow easy conversion of cross-document navigations into single-page app same-document navigations, without fragile hacks like a global `click` handler.
 
 - Provide a uniform way to signal single-page app navigations, including their duration.
 
 - Provide a reliable system to tie application and UI state to history entries.
+
+- Continue to support the pattern of allowing the history stack to contain state that is not serialized to the URL. (This is possible with `history.pushState()` today.)
 
 - Provide events for notifying the application about navigations through the list of history entries, which they can use to synchronize application or UI state.
 
@@ -82,11 +84,17 @@ Non-goals:
 
 - Provide applications knowledge of other frames' entries or state.
 
+- Provide platform support for the coordination problem of multiple routers (e.g., per-UI-component routers) on a single page. We plan to leave this coordination to frameworks for now (with the frameworks using the new API).
+
 - Handle the case where the Android back button is being used as a "modal close signal"; instead, we believe that's best handled by [a separate API](./history_and_modals.md).
+
+- Provide any handling for preventing navigations that might lose data: this is already handled orthogonally by the platform's `beforeunload` event.
 
 - Provide an elegant layering onto or integration with the existing `window.history` API. That API is quite problematic, and we can't be tied down by a need to make every operation in the new API isomorphic to one in the old API.
 
-_TODO: figure out which of [Chris's goals and non-goals](https://docs.google.com/document/d/1eL7tOQXVw7hyV7tudS7WukT9qIsmZm0o-qGxq0wP2Ko/edit#) we haven't incorporated, but should._
+A goal that might not be possible, but we'd like to try:
+
+- It would be ideal if this API were polyfillable, especially in its mainline usage scenarios.
 
 ## Proposal
 
@@ -147,7 +155,7 @@ As with `history.pushState()` and `history.replaceState()`, the new URL here mus
 
 Note that `appHistory.pushNewEntry()` is asynchronous. As with other [navigations through the app history list](#navigation-through-the-app-history-list), pushing a new entry can be intercepted or canceled, so it will always be delayed at least one microtask.
 
-_TODO: need a realistic example of using `appHistory.pushNewEntry()` instead of `navigationEvent.respondWith()`. TODO 2021-01-22: there are plenty of cases of this; you understand this better now. Spell it out, and talk about the differences between that and `location.href` setter._
+In general, you would use `appHistory.updateCurrentEntry()` and `appHistory.pushNewEntry()` in similar scenarios to when you would use `history.pushState()` and `history.replaceState()`. However, note that in the app history API, there are some cases where you don't have to use `appHistory.pushNewEntry()`; see [the discussion below](#using-navigate-handlers-plus-non-history-apis) for more on that subject.
 
 Crucially, `appHistory.currentEntry` stays the same regardless of what iframe navigations happen. It only reflects the current entry for the current frame. The complete list of ways the current app history entry can change are:
 
@@ -305,7 +313,7 @@ _TODO: should these be combined into a helper method like `e.redirect("/login")`
 
 In practice, this might be hidden behind a full router framework, e.g. the Angular framework has a notion of [route guards](https://angular.io/guide/router#preventing-unauthorized-access). Then, the framework would be the one listening to the `navigate` event, looping through its list of registered route guards to figure out the appropriate reaction.
 
-NOTE: if you combine this example with the previous one, it's important that this route guard event handler be installed before the general single-page navigation event handler. Additionally, you'd want to either insert a call to `e.stopImmediatePropagation()` here, or a check of `e.defaultPrevented` in that example, to stop the other `navigate` event handler from proceeding with the canceled navigation. In practice, we expect there to be one large application- or framework-level `navigate` event handler, which would take care of ensuring that route guards happen before the other parts of the router logic, and preventing that logic from executing.
+NOTE: if you combine this example with the previous one, it's important that this route guard event handler be installed before the general single-page navigation event handler. Additionally, you'd want to either insert a call to `e.stopImmediatePropagation()` in this example, or a check of `e.defaultPrevented` in that example, to stop the other `navigate` event handler from proceeding with the canceled navigation. In practice, we expect there to be one large application- or framework-level `navigate` event handler, which would take care of ensuring that route guards happen before the other parts of the router logic, and preventing that logic from executing.
 
 #### Example: affiliate links
 
@@ -408,7 +416,7 @@ Between the per-`AppHistoryEntry` events and the `window.appHistory` events, the
 1. `window.appHistory.currentEntry` fires `navigatefrom`.
 1. `window.appHistory` fires `navigate`. (Cancelable/`respondWith()`-able)
 1. If the event is canceled:
-    1. If this whole process was initiated by a call to `appHistory.navigateTo()`, `appHistory.back()`, or `appHistory.forward()`, fulfill that promise with `false`.
+    1. If this whole process was initiated by a call to `appHistory.navigateTo()`, `appHistory.back()`, or `appHistory.forward()`, fulfill that promise with `undefined`.
     1. Return.
 1. If `navigateEvent.respondWith()` is called with a rejected promise:
     1. If this whole process was initiated by a call to `appHistory.navigateTo()`, `appHistory.back()`, or `appHistory.forward()`, reject that promise with the same rejection reason.
@@ -418,7 +426,7 @@ Between the per-`AppHistoryEntry` events and the `window.appHistory` events, the
     1. `window.appHistory.currentEntry` fires `navigateto`.
     1. `window.appHistory` fires `currententrychange`.
     1. Any `AppHistoryEntry` instances which are now unreachable fire `dispose` events.
-    1. If this whole process was initiated by a call to `appHistory.navigateTo()`, `appHistory.back()`, or `appHistory.forward()`, fulfill that promise with `true`.
+    1. If this whole process was initiated by a call to `appHistory.navigateTo()`, `appHistory.back()`, or `appHistory.forward()`, fulfill that promise with `undefined`.
 
 For a cross-document navigation, the sequence is very similar, except if `navigateEvent.respondWith()` is not called, then we indeed proceed to the destination document, and steps (5.i)–(5.iii) happen in that destination document. (Step (5.iv) is not applicable, and step (5.v) does not happen at all since the promise has gone away, along with the old document.) Note that this destination document could be being restored from the browser's back/forward cache, in which case these events happen after the `pageshow` event, or the destination document could be created from scratch, in which case these events happen after the `DOMContentLoaded` event. _TODO not so sure about that last part._
 
@@ -575,9 +583,9 @@ In particular, user agents can continue to refine their mapping of UI to joint s
 
 ## Security and privacy considerations
 
-Privacy-wise, this feature is neutral, due to its strict same-origin contiguous entry scoping. That is, it only exposes information which the application already has access to, just in a more convenient form. _TODO: probably need more reassurance since we're storing state and that always trips some alarms._
+Privacy-wise, this feature is neutral, due to its strict same-origin contiguous entry scoping. That is, it only exposes information which the application already has access to, just in a more convenient form. The storage of state in the `AppHistoryEntry`'s `state` property is a convenience with no new privacy concerns, since that state is only accessible same-origin; that is, it provides the same power as something like `sessionStorage`. _TODO: or, even less power, if we want it to be in-memory only?_
 
-_TODO: talk about security story after we figure out navigation interception._
+Security-wise, this feature does not touch on any security-sensitive areas of the browser or application code.
 
 _TODO: W3C TAG security and privacy questionnaire._
 
