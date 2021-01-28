@@ -15,6 +15,7 @@ This new API layers on top of the existing API and specification infrastructure,
   - [Inspection of the app history list](#inspection-of-the-app-history-list)
   - [Navigation through the app history list](#navigation-through-the-app-history-list)
   - [Navigation monitoring and interception](#navigation-monitoring-and-interception)
+    - [Measuring standardized standardized single-page navigations](#measuring-standardized-standardized-single-page-navigations)
     - [Example: replacing navigations with single-page app navigations](#example-replacing-navigations-with-single-page-app-navigations)
     - [Example: single-page app "redirects"](#example-single-page-app-redirects)
     - [Example: affiliate links](#example-affiliate-links)
@@ -25,7 +26,7 @@ This new API layers on top of the existing API and specification infrastructure,
   - [Performing navigations](#performing-navigations)
   - [Using `navigate` handlers plus non-history APIs](#using-navigate-handlers-plus-non-history-apis)
   - [Attaching and using history state](#attaching-and-using-history-state)
-  - [Introspecting the history stack](#introspecting-the-history-stack)
+  - [Introspecting the history list](#introspecting-the-history-list)
   - [Watching for navigations](#watching-for-navigations)
 - [Integration with the existing history API and spec](#integration-with-the-existing-history-api-and-spec)
 - [Impact on back button and user agent UI](#impact-on-back-button-and-user-agent-ui)
@@ -42,21 +43,21 @@ Web application developers, as well as the developers of router libraries for si
 
 - Intercepting cross-document navigations, replacing them with single-page navigations (i.e. loading content into the appropriate part of the existing document), and then updating the URL bar.
 
-- Performing single-page navigations that create and pushing a new entry onto the history stack, to represent a new conceptual history entry.
+- Performing single-page navigations that create and pushing a new entry onto the history list, to represent a new conceptual history entry.
 
-- Navigating backward or forward through the history stack via application-provided UI.
+- Navigating backward or forward through the history list via application-provided UI.
 
-- Synchronizing application or UI state with the current position in the history stack, so that user- or application-initiated navigations through the history stack appropriately restores application/UI state.
+- Synchronizing application or UI state with the current position in the history list, so that user- or application-initiated navigations through the history list appropriately restore application/UI state.
 
-The existing [history API](https://developer.mozilla.org/en-US/docs/Web/API/History) is difficult to use for these purposes. The fundamental problem is that `window.history` surfaces the joint session history of a browsing session, and so gets updated in response to navigations in nested frames, or cross-origin navigations. Although this is an important view for the user, especially in terms of how it impacts their back button, it doesn't map well to web application development. A web application cares about its own, same-origin, current-frame history entries, and having to deal with the entire joint session history makes this very painful. Even in a carefully-crafted web app, a single iframe can completely mess up the application's history stack.
+The existing [history API](https://developer.mozilla.org/en-US/docs/Web/API/History) is difficult to use for these purposes. The fundamental problem is that `window.history` surfaces the joint session history of a browsing session, and so gets updated in response to navigations in nested frames, or cross-origin navigations. Although this view is important for the user, especially in terms of how it impacts their back button, it doesn't map well to web application development. A web application cares about its own, same-origin, current-frame history entries, and having to deal with the entire joint session history makes this very painful. Even in a carefully-crafted web app, a single iframe can completely mess up the application's history.
 
-The existing history API also has a number of less-fundamental, but still very painful, problems around how its API shape has grown organically, with only very slight considerations for single-page app architectures. For example, it provides no mechanism for intercepting navigations; to do this, developers have to intercept all `click` events, cancel them, and perform the appropriate `history.pushState()` call. The `history.state` property is a very bad storage mechanism for application and UI state, as it disappears and reappears as you transition throughout the history stack, instead of allowing access to earlier entries in the stack. And the ability to navigate throughout the stack is limited to numeric offsets, with `history.go(-2)` or similar; thus, navigating back to an actual specific state requires keeping a side table mapping history indices to application states.
+The existing history API also has a number of less-fundamental, but still very painful, problems around how its API shape has grown organically, with only very slight considerations for single-page app architectures. For example, it provides no mechanism for intercepting navigations; to do this, developers have to intercept all `click` events, cancel them, and perform the appropriate `history.pushState()` call. The `history.state` property is a very bad storage mechanism for application and UI state, as it disappears and reappears as you transition throughout the history list, instead of allowing access to earlier entries in the list. And the ability to navigate throughout the list is limited to numeric offsets, with `history.go(-2)` or similar; thus, navigating back to an actual specific state requires keeping a side table mapping history indices to application states.
 
 To hear more detail about these problems, in the words of a web developer, see [@dvoytenko](https://github.com/dvoytenko)'s ["The case for the new Web History API"](https://github.com/dvoytenko/web-history-api/blob/master/problem.md). See also [@housseindjirdeh](https://github.com/housseindjirdeh)'s ["History API and JavaScript frameworks"](https://docs.google.com/document/d/1gLW_FlR_wD93ZWXWmH14q0UssBaR0eGMk8njyr6p3cE/edit).
 
 ## Goals
 
-Overall, our guiding principle is to make it easy for web application developers to write applications which give good user experiences in terms of the history stack, back button, and other navigation UI (such as open-in-new-tab). We believe this is too hard today with the `window.history` API.
+Overall, our guiding principle is to make it easy for web application developers to write applications which give good user experiences in terms of the history list, back button, and other navigation UI (such as open-in-new-tab). We believe this is too hard today with the `window.history` API.
 
 From an API perspective, our primary goals are as follows:
 
@@ -66,13 +67,13 @@ From an API perspective, our primary goals are as follows:
 
 - Provide a reliable system to tie application and UI state to history entries.
 
-- Continue to support the pattern of allowing the history stack to contain state that is not serialized to the URL. (This is possible with `history.pushState()` today.)
+- Continue to support the pattern of allowing the history list to contain state that is not serialized to the URL. (This is possible with `history.pushState()` today.)
 
 - Provide events for notifying the application about navigations through the list of history entries, which they can use to synchronize application or UI state.
 
 - Allow analytics (first- or third-party) to watch for navigations, including gathering timing information about how long they took, without interfering with the rest of the application.
 
-- Provide a way for an application to reliably navigate through its own history stack.
+- Provide a way for an application to reliably navigate through its own history list.
 
 - Provide a reasonable layering onto and integration with the existing `window.history` API, in terms of spec primitives and ensuring non-terrible behavior when both are used.
 
@@ -96,6 +97,14 @@ A goal that might not be possible, but we'd like to try:
 
 - It would be ideal if this API were polyfillable, especially in its mainline usage scenarios.
 
+Finally, although it's really a goal for all web APIs, we want to call out a strong focus on interoperability, backstopped by [web platform tests](http://web-platform-tests.org/). The existing history API and its interactions with navigation have terrible interoperability (see [this vivid example](https://docs.google.com/document/d/1Pdve-DJ1JCGilj9Yqf5HxRJyBKSel5owgOvUJqTauwU/edit#)). We hope to have solid and well-tested specifications for:
+
+- Every aspect and self-interaction of the new API
+
+- Every aspect of how the new API integrates and interacts with the `window.history` API (including things like relative timing of events)
+
+Additionally, we hope to drive interoperability through tests, spec updates, and browser bugfixes for the existing `window.history` API while we're in the area, to the extent that is possible; some of this work is being done in [whatwg/html#5767](https://github.com/whatwg/html/issues/5767).
+
 ## Proposal
 
 ### The current entry, and single-page navigations
@@ -111,8 +120,6 @@ The entry point for the app history API is `window.appHistory`. Let's start with
 - `sameDocument`: a boolean indicating whether this entry is for the current document, or whether navigating to it will require a full navigation (either from the network, or from the browser's back/forward cache). Note: for `appHistory.currentEntry`, this will always be `true`.
 
 _NOTE: `state` would benefit greatly from having an interoperable size limit. This would depend on [whatwg/storage#110](https://github.com/whatwg/storage/issues/110)._
-
-_TODO: or, is `state` purely in-memory? Maybe that's a big, important difference from `history.state`. It would also allow us to get rid of size limits. It does mean it would go away on cross-document same-origin navs though, hmm._
 
 For single-page applications that want to update the current entry in the same manner as today's `history.replaceState()` APIs, we have the following:
 
@@ -189,7 +196,7 @@ All of these methods return promises, because navigations can be intercepted and
 
 - The `navigate` event cancels the navigation, in which case the promise fulfills with `undefined` and `appHistory.currentEntry` stays the same.
 
-- It's not possible to navigate to the given entry, e.g. `appHistory.navigateTo(key)` was given a non-existant `key`, or `appHistory.back()` was called when there's no previous entries in the app history stack. In this case also, the promise fulfills with `undefined` and `appHistory.currentEntry` stays the same.
+- It's not possible to navigate to the given entry, e.g. `appHistory.navigateTo(key)` was given a non-existant `key`, or `appHistory.back()` was called when there's no previous entries in the app history list. In this case also, the promise fulfills with `undefined` and `appHistory.currentEntry` stays the same.
 
 - The navigation succeeds, and was a same-document navigation. Then the promise fulfills with `undefined`,  and `appHistory.currentEntry` (as well as the URL bar, if appropriate) will update.
 
@@ -237,11 +244,36 @@ Additionally, the event has a special method `event.respondWith(promise)`. This 
 - For the duration of the promise settling, any browser loading UI such as a spinner will behave as if it were doing a cross-document navigation.
 - After the promise settles, the browser will update its UI (such as URL bar or back button) to reflect the new current history entry.
 
-_TODO: should we give direct control over when the browser UI updates, in case developers want to update it earlier in the lifecycle before the promise fully settles? E.g. `event.commitNavigation()` or `event.commitNavigationUI()`? Would it be OK to let the UI get out of sync with the history stack?_
+_TODO: should we give direct control over when the browser UI updates, in case developers want to update it earlier in the lifecycle before the promise fully settles? E.g. `event.commitNavigation()` or `event.commitNavigationUI()`? Would it be OK to let the UI get out of sync with the history list?_
 
-Beyond convenience, `respondWith()` serves as a useful extension point for the browser and web developer. In particular, we vaguely envision it being used to generate developer-facing timing data as part of a new web performance API, which can provide a single-page app counterpart to traditional navigation timing metrics. Additionally, it could allow the browser to display a progress bar while the promise settles, like browsers do for different-document navigations.
+#### Measuring standardized standardized single-page navigations
 
-_TODO: incorporate more from <https://github.com/philipwalton/navigation-event-proposal>, either here or in a dedicated section._
+The `navigate` event's `event.respondWith()` method provides a helpful convenience for implementing single-page navigations, as discussed above. But beyond that, providing a direct signal to the browser as to the duration and outcome of a single-page navigation has wider ecosystem benefits in regards to metrics gathering.
+
+In particular, today it is not clear to the browser when a user interaction causes a single-page navigation, because of the app-specific JavaScript that intermediates between such interactions and the eventual call to `history.pushState()`/`history.replaceState()`. It is also unclear exactly when the navigation ends: e.g., some applications optimistically call `history.pushState()` before the content is loaded.
+
+Using `respondWith()` solves these problems. It gives the browser clear insight into when a navigation is being handled as a single-page navigation, and the provided promise allows the browser to know how long the navigation takes, and whether or not it succeeds. We expect browsers to use these to update their own UI (including any loading indicators; see [whatwg/fetch#19](https://github.com/whatwg/fetch/issues/19) and [whatwg/html#330](https://github.com/whatwg/html/issues/330) for previous feature requests).
+
+Additionally, analytics frameworks would be able to consume this information from the browser in a way that works across all applications using the app history API. See the example in the [Current entry change monitoring](#current-entry-change-monitoring) section for one way this could look; other possibilities include integrating into the existing [performance APIs](https://w3c.github.io/performance-timeline/).
+
+This standardized notion of single-page navigations also gives a hook for other useful metrics to build off of. For example, you could imagine variants of the `"first-paint"` and `"first-contentful-paint"` APIs which are collected after the promise provided to `respondWith()` settles. Or, you could imagine vendor-specific or application-specific measurements like [Cumulative Layout Shift](https://web.dev/cls/) or React hydration time being reset after such navigations.
+
+This isn't a complete panacea: in particular, metrics derived in such a way are potentially "gameable" using techniques such as
+
+```js
+event.respondWith(Promise.resolve());
+nowDoTheActualLoadingWork();
+```
+
+(which makes the navigation appear instant to the browser). Another potential way of driving down average measured "load time" would be by generating excessive `navigate` events that don't actually do anything. So in scenarios where the web application is less interested in measuring itself, and more interested in driving down specific metrics, those creating the metrics will need to take into account such misuse of the API. Some potential countermeasures against such gaming could include:
+
+- Filtering to only count navigations where `event.userInitiated` is true.
+
+- Filtering to only count navigations where the URL changes (i.e., `appHistory.currentEntry.url !== event.destinationEntry.url`).
+
+- We hope that most analytics vendors will come to automatically track `navigate` events as page views, and measure their duration. Then, apps using such analytics vendors would have an incentive to keep their page view statistics meaningful, and thus be disincentivized to generate spurious navigations.
+
+- To the extent developers want to get the correct browser UI treatment for a navigation, including the loading spinner, they will need to pass a promise containing accurate timing and success/failure information to `respondWith()`. Gaming metrics by passing fake promises would lose this nice browser affordance.
 
 #### Example: replacing navigations with single-page app navigations
 
@@ -282,15 +314,15 @@ Note how this example responds to various types of navigations:
 - Same-document fragment navigations: let the browser handle it as usual
 - Same-document URL/state updates (via `history.pushState()`, `appHistory.updateCurrentEntry()`, etc.):
   1. Send the information about the URL/state update to `doSinglePageAppNav()`, which will use it to modify the current document
-  1. After that UI update is done, potentially asynchronously, update the history stack and browser UI
+  1. After that UI update is done, potentially asynchronously, update the history list and browser UI
 - Cross-document normal navigations:
   1. Prevent the browser handling, which would unload the document and create a new one from the network
   1. Instead, send the information about the navigation to `doSinglePageAppNav()`, which will use it to modify the current document
-  1. After that UI update is done, potentially asynchronously, update the history stack and browser UI
+  1. After that UI update is done, potentially asynchronously, update the history list and browser UI
 - Cross-document form submissions:
   1. Prevent the browser handling, which would unload the document and create a new one from the network
   1. Instead, send the form data to `processFormDataAndUpdateUI()`, which will use it to modify the current document
-  1. After that UI update is done, potentially asynchronously, update the history stack and browser UI
+  1. After that UI update is done, potentially asynchronously, update the history list and browser UI
 
 #### Example: single-page app "redirects"
 
@@ -335,7 +367,7 @@ _TODO: it feels like this should be less disruptive than a cancel-and-perform-ne
 
 ### Per-entry events
 
-Each `AppHistoryEntry` has a series of events which the application can react to. **We expect these to mostly be used by decentralized parts of the application's codebase, such as components, to synchronize their state with the history stack.** Unlike the `navigate` event, these events are not cancelable. They are used only for reacting to state changes, not intercepting or preventing navigations.
+Each `AppHistoryEntry` has a series of events which the application can react to. **We expect these to mostly be used by decentralized parts of the application's codebase, such as components, to synchronize their state with the history list.** Unlike the `navigate` event, these events are not cancelable. They are used only for reacting to state changes, not intercepting or preventing navigations.
 
 The application can use the `navigateto` and `navigatefrom` events to update the UI in response to a given entry becoming the current app history entry. For example, consider a photo gallery application. One way of implementing this would be to store metadata about the photo in the corresponding `AppHistoryEntry`'s `state` property. This might look something like this:
 
@@ -440,13 +472,15 @@ Instead of using `history.pushState(state, uselessTitle, url)`, use `await appHi
 
 Instead of using `history.replaceState(state, uselessTitle, url)`, use `await appHistory.updateCurrentEntry({ state, url })`. Note that if you omit the state value, i.e. if you say `appHistory.updateCurrentEntry({ url })`, then unlike `history.replaceState()`, this will copy over the current entry's state.
 
-Instead of using `history.back()` and `history.forward()`, use `await appHistory.back()` and `await appHistory.forward()`. Note that unlike the `history` APIs, the `appHistory` APIs will ignore other frames, and will only control the navigation of your frame. Additionally, for same-document navigations, you can test whether the navigation had an effect using a pattern like the following:
+Instead of using `history.back()` and `history.forward()`, use `await appHistory.back()` and `await appHistory.forward()`. Note that unlike the `history` APIs, the `appHistory` APIs will ignore other frames, and will only control the navigation of your frame. This means it might move through multiple entries in the joint session history, skipping over any entries that were generated purely by other-frame navigations.
+
+Additionally, for same-document navigations, you can test whether the navigation had an effect using a pattern like the following:
 
 ```js
 const startingEntry = appHistory.currentEntry;
 await appHistory.back();
 if (startingEntry === appHistory.currentEntry) {
-  console.log("We weren't able to go back, because there was nothing previous in the app history stack");
+  console.log("We weren't able to go back, because there was nothing previous in the app history list");
 }
 ```
 
@@ -509,6 +543,8 @@ document.addEventListener("navigate", e => {
 
 Note how in this case we don't need to use `appHistory.pushNewEntry()`, even though the original code used `history.pushState()`.
 
+_TODO: we could also consider removing `appHistory.pushNewEntry()` if we're not sure about remaining use cases? Then we'd likely have to add a state argument to something like `location.assign()`..._
+
 ### Attaching and using history state
 
 To update the current entry's state, instead of using `history.replaceState(newState)`, use `appHistory.updateCurrentEntry({ newState })`.
@@ -518,15 +554,15 @@ To read the current entry's state, instead of using `history.state`, use `appHis
 In general, state in app history is expected to be more useful than state in the `window.history` API, because:
 
 - It can be introspected even for the non-current entry, e.g. using `appHistory.entries[i].state`.
-- It is not erased by navigations that are not under the developer's control, such as fragment navigations (for which the state is copied over) and iframe navigations (which don't affect the app history stack).
+- It is not erased by navigations that are not under the developer's control, such as fragment navigations (for which the state is copied over) and iframe navigations (which don't affect the app history list).
 
 This means that the patterns that are often necessary to reliably store application and UI state with `window.history`, such as maintaining a side-table or using `sessionStorage`, should not be necessary with `window.appHistory`.
 
-### Introspecting the history stack
+### Introspecting the history list
 
-To see how many history entries are in the app history stack, use `appHistory.entries.length`, instead of `history.length`. However, note that the semantics are different: app history entries only include same-origin contiguous entries for the current frame, and so that this doesn't reflect the history before the user arrived at the current origin, or the history of iframes. We believe this will be more useful for the patterns that people want in practice, such as showing an in-application back button if `appHistory.entries.length > 0`.
+To see how many history entries are in the app history list, use `appHistory.entries.length`, instead of `history.length`. However, note that the semantics are different: app history entries only include same-origin contiguous entries for the current frame, and so that this doesn't reflect the history before the user arrived at the current origin, or the history of iframes. We believe this will be more useful for the patterns that people want in practice, such as showing an in-application back button if `appHistory.entries.length > 0`.
 
-The app history API allows introspecting all entries in the app history stack, using `appHistory.entries`. This should replace some of the workarounds people use today with the `window.history` API for getting a sense of the history stack, e.g. as described in [whatwg/html#2710](https://github.com/whatwg/html/issues/2710).
+The app history API allows introspecting all entries in the app history list, using `appHistory.entries`. This should replace some of the workarounds people use today with the `window.history` API for getting a sense of the history list, e.g. as described in [whatwg/html#2710](https://github.com/whatwg/html/issues/2710).
 
 Finally, note that `history.length` is highly non-interoperable today, in part due to the complexity of the joint session history model, and in part due to historical baggage. `appHistory`'s less complex model, and the fact that it will be developed in the modern era when there's a high focus on ensuring interoperability through web platform tests, means that using it should allow developers to avoid cross-browser issues with `history.length`.
 
@@ -579,11 +615,37 @@ Finally, all the higher-level mechanisms of session history entry management, su
 
 The app history API doesn't change anything about how user agents implement their UI: it's really about developer-facing affordances. Users still care about the joint session history, and so that will continue to be presented in UI surfaces like holding down the back button. Similarly, pressing the back button will continue to navigate through the joint session history, potentially across origins and out of the current app history (into a new app history, on the new origin).
 
-In particular, user agents can continue to refine their mapping of UI to joint session history to give a better experience. For example, in some cases user agents today have the back button skip joint session history entries which were created without user interaction. We expect this heuristic would continue to be applied for `appHistory.pushNewEntry()`, just like it is for today's `history.pushState()`.
+An important consequence of this is that when iframes are involved, the back button may navigate through the joint session history, without changing the current _app history_ entry. For example, consider the following sequence:
+
+1. `https://example.com/start` loads
+1. The user navigates to `https://example.com/outer` by clicking a link. This page contains an iframe with `https://example.com/inner-start`.
+1. The iframe navigates to `https://example.com/inner-end`.
+
+The app history list for the outer frame contains two entries:
+
+```
+1. https://example.com/start
+2. https://example.com/outer
+```
+
+The joint session session history contains three entries:
+
+```
+A. https://example.com/start
+B. https://example.com/outer
+   ┗ https://example.com/inner-start
+C. https://example.com/outer
+   ┗ https://example.com/inner-end
+```
+
+The user's back button, as well as the `history.back()` API, will navigate the joint session history back to (B). However, they will have no effect on the app history list; that will stay on (2). Pressing the back button or calling `history.back()` a second time would then move the joint session history back to (A), and the app history list back to (1).
+
+Finally, note that user agents can continue to refine their mapping of UI to joint session history to give a better experience. For example, in some cases user agents today have the back button skip joint session history entries which were created without user interaction. We expect this heuristic would continue to be applied for `appHistory.pushNewEntry()`, just like it is for today's `history.pushState()`.
+
 
 ## Security and privacy considerations
 
-Privacy-wise, this feature is neutral, due to its strict same-origin contiguous entry scoping. That is, it only exposes information which the application already has access to, just in a more convenient form. The storage of state in the `AppHistoryEntry`'s `state` property is a convenience with no new privacy concerns, since that state is only accessible same-origin; that is, it provides the same power as something like `sessionStorage`. _TODO: or, even less power, if we want it to be in-memory only?_
+Privacy-wise, this feature is neutral, due to its strict same-origin contiguous entry scoping. That is, it only exposes information which the application already has access to, just in a more convenient form. The storage of state in the `AppHistoryEntry`'s `state` property is a convenience with no new privacy concerns, since that state is only accessible same-origin; that is, it provides the same power as something like `sessionStorage`.
 
 Security-wise, this feature does not touch on any security-sensitive areas of the browser or application code.
 
