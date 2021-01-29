@@ -20,6 +20,7 @@ This new API layers on top of the existing API and specification infrastructure,
     - [Example: single-page app "redirects"](#example-single-page-app-redirects)
     - [Example: affiliate links](#example-affiliate-links)
   - [Queued up single-page navigations](#queued-up-single-page-navigations)
+  - [Navigations while a navigation is ongoing](#navigations-while-a-navigation-is-ongoing)
   - [Per-entry events](#per-entry-events)
   - [Current entry change monitoring](#current-entry-change-monitoring)
   - [Complete event sequence](#complete-event-sequence)
@@ -225,7 +226,7 @@ Note that you can check if the navigation will be same-document via `event.desti
 
 In some cases, the event is cancelable via `event.preventDefault()`, which prevents the navigation from going through. Specifically:
 
-- It is cancelable for user-initiated navigations via `<a>` elements, including both same-document fragment navigations and cross-document navigations.
+- It is cancelable for user-initiated navigations via `<a>` and `<form>` elements, including both same-document fragment navigations and cross-document navigations.
 - It is cancelable for programmatically-initiated navigations, via mechanisms such as `location.href = ...` or `aElement.click()`, including both same-document fragment navigations and cross-document navigations.
 - It is cancelable for programmatically-initiated same-document navigations initiated via `appHistory.pushNewEntry()`, `appHistory.updateCurrentEntry()`, or their old counterparts `history.pushState()` and `history.replaceState()`.
 - It is _not_ cancelable for user-initiated navigations via browser UI, such as the URL bar or bookmarks.
@@ -368,9 +369,32 @@ appHistory.addEventListener("navigate", e => {
 
 _TODO: it feels like this should be less disruptive than a cancel-and-perform-new-navigation; it's just a tweak to the outgoing navigation. Using the same code as the previous example feels wrong. Some brainstorming needed._
 
+### Navigations while a navigation is ongoing
+
+Because this proposal makes the web-developer-facing concept of a navigation always asynchronous, i.e. from the start of the `navigate` event through to the end of any promise passed to `respondWith()` settling, it's possible for navigations to happen while an existing navigation is ongoing. Even very simple code like the following would trigger this:
+
+```js
+appHistory.pushNewEntry({ url: "/first" }); // intentionally no `await`
+appHistory.pushNewEntry({ url: "/second" });
+```
+
+In this proposal, any [interceptable](#navigation-monitoring-and-interception) navigations are queued up, one after the other: thus, in the above code example, first one complete navigation (including the `navigate` event and any of its work) finishes for `/first`, and only after that's done does the navigation to `/second` go through. This is true regardless of how the navigation is triggered: i.e., the `location.href` setter, `<a>` clicks, and `history.pushState()` all result in such queued-up navigations.
+
+Note that non-interceptable navigations, such as user-initiated navigations via the URL bar or back button, jump the queue and interrupt any ongoing or queued-up navigations. This prevents a deep queue from being used to trap the user on a page.
+
+To give visibility into this queuing process, and allow applications and frameworks to manage the queue, there's an `upcomingnavigate` event. Inside the event handler, you can inspect both the upcoming (queued) navigation's `AppHistoryEntry`, and the `AppHistoryEntry` of the ongoing navigation. You can also discard the upcoming entry. It might be used as follows:
+
+```js
+appHistory.addEventListener("upcomingnavigate", e => {
+  if (isNotImportant(e.upcomingEntry.url) && isImportant(e.ongoingEntry.url)) {
+    e.discardUpcoming();
+  }
+});
+```
+
 ### Queued up single-page navigations
 
-Consider trying to code a "next" button that performs a single-page navigation. This can be prone to race conditions if navigations are not instant. For example, if you're on `/photos/1` and click the next button twice, you should end up at `photos/3`, even if `photos/2` takes a long time to load and the click handler executes while the URL bar still reads `/photos/1`.
+Consider trying to code a "next" button that performs a single-page navigation. This can be prone to race conditions, since with the app history API, single-page navigations are asynchronous. For example, if you're on `/photos/1` and click the next button twice, the intended behavior is to end up at `photos/3`, even if `photos/2` takes a long time to load and the click handler executes while the URL bar still reads `/photos/1`.
 
 Concretely, code such as the following is buggy:
 
@@ -417,7 +441,7 @@ document.querySelector("#next").onclick = async () => {
 
 Although not shown in the above example, the callback could also return a `state` value.
 
-_TODO: should the callback be able to say "nevermind, I don't care anymore, please don't navigate"? We could let the *caller* do that by passing an `AbortSignal` after the callback... Needs thinking about in the general context of multiple navigations ongoing._
+_TODO: should the callback be able to say "nevermind, I don't care anymore, please don't navigate"? We could let the *caller* do that by passing an `AbortSignal` after the callback... And the general *app* can do it using `upcomingnavigate`..._
 
 In general, the idea of these callback variants is that there are cases where the new URL or state is not determined synchronously, and is a function of the current state of the world at the time the navigation is ready to be performed.
 
@@ -749,8 +773,9 @@ interface AppHistory : EventTarget {
   Promise<undefined> back();
   Promise<undefined> forward();
 
-  readonly attribute EventHandler oncurrententrychange;
   readonly attribute EventHandler onnavigate;
+  readonly attribute EventHandler onupcomingnavigate;
+  readonly attribute EventHandler oncurrententrychange;
 };
 
 [Exposed=Window]
@@ -787,6 +812,19 @@ dictionary AppHistoryNavigateEventInit : EventInit {
   boolean sameOrigin = false;
   required AppHistoryEntry destinationEntry;
   FormData? formData = null;
+};
+
+[Exposed=Window]
+interface AppHistoryUpcomingNavigateEvent : Event {
+  constructor(DOMString type, optional AppHistoryUpcomingNavigateEventInit eventInit = {});
+
+  readonly attribute AppHistoryEntry upcomingEntry;
+  readonly attribute AppHistoryEntry ongoingEntry;
+};
+
+dictionary AppHistoryUpcomingNavigateEventInit : EventInit {
+  required AppHistoryEntry upcomingEntry;
+  required AppHistoryEntry ongoingEntry;
 };
 
 [Exposed=Window]
