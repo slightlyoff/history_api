@@ -15,12 +15,12 @@ This new API layers on top of the existing API and specification infrastructure,
   - [Inspection of the app history list](#inspection-of-the-app-history-list)
   - [Navigation through the app history list](#navigation-through-the-app-history-list)
   - [Navigation monitoring and interception](#navigation-monitoring-and-interception)
-    - [Measuring standardized standardized single-page navigations](#measuring-standardized-standardized-single-page-navigations)
+    - [Measuring standardized single-page navigations](#measuring-standardized-single-page-navigations)
     - [Example: replacing navigations with single-page app navigations](#example-replacing-navigations-with-single-page-app-navigations)
     - [Example: single-page app "redirects"](#example-single-page-app-redirects)
     - [Example: affiliate links](#example-affiliate-links)
-  - [Queued up single-page navigations](#queued-up-single-page-navigations)
   - [Navigations while a navigation is ongoing](#navigations-while-a-navigation-is-ongoing)
+  - [Queued up single-page navigations](#queued-up-single-page-navigations)
   - [Per-entry events](#per-entry-events)
   - [Current entry change monitoring](#current-entry-change-monitoring)
   - [Complete event sequence](#complete-event-sequence)
@@ -31,7 +31,7 @@ This new API layers on top of the existing API and specification infrastructure,
   - [Introspecting the history list](#introspecting-the-history-list)
   - [Watching for navigations](#watching-for-navigations)
 - [Integration with the existing history API and spec](#integration-with-the-existing-history-api-and-spec)
-- [Impact on back button and user agent UI](#impact-on-back-button-and-user-agent-ui)
+- [Impact on the back button and user agent UI](#impact-on-the-back-button-and-user-agent-ui)
 - [Security and privacy considerations](#security-and-privacy-considerations)
 - [Stakeholder feedback](#stakeholder-feedback)
 - [Acknowledgments](#acknowledgments)
@@ -250,7 +250,7 @@ Additionally, the event has a special method `event.respondWith(promise)`. This 
 
 _TODO: should we give direct control over when the browser UI updates, in case developers want to update it earlier in the lifecycle before the promise fully settles? E.g. `event.commitNavigation()` or `event.commitNavigationUI()`? Would it be OK to let the UI get out of sync with the history list?_
 
-#### Measuring standardized standardized single-page navigations
+#### Measuring standardized single-page navigations
 
 The `navigate` event's `event.respondWith()` method provides a helpful convenience for implementing single-page navigations, as discussed above. But beyond that, providing a direct signal to the browser as to the duration and outcome of a single-page navigation has wider ecosystem benefits in regards to metrics gathering.
 
