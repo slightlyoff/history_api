@@ -19,6 +19,7 @@ This new API layers on top of the existing API and specification infrastructure,
     - [Example: replacing navigations with single-page app navigations](#example-replacing-navigations-with-single-page-app-navigations)
     - [Example: single-page app "redirects"](#example-single-page-app-redirects)
     - [Example: affiliate links](#example-affiliate-links)
+    - [Example: using `navigateInfo`](#example-using-navigateinfo)
   - [Navigations while a navigation is ongoing](#navigations-while-a-navigation-is-ongoing)
   - [Queued up single-page navigations](#queued-up-single-page-navigations)
   - [Per-entry events](#per-entry-events)
@@ -174,7 +175,7 @@ Crucially, `appHistory.currentEntry` stays the same regardless of what iframe na
 
 - A full-page navigation to a different document. This could be an existing document in the browser's back/forward cache, or a new document. In the latter case, this will generate a new entry on the new page's `window.appHistory` object, somewhat similar to `appHistory.pushNewEntry({ url: navigatedToURL, state: null })`. Note that if the navigation is cross-origin, then we'll end up in a separate app history list for that other origin.
 
-Finally, note that these APIs also have a callback-based variant for dealing with queued navigations. We discuss those [below](#queued-up-single-page-navigations), since examples involving them are easier to write after we have shown the basics of [navigation interception](#navigation-monitoring-and-interception).
+Finally, note that these two APIs also have some more advanced features, which are easier to discuss after we have introduced other parts of the app history API. The first is a callback-based variant for dealing with queued navigations, discussed in [its own section](#queued-up-single-page-navigations), and the second is the `info` option, discussed as part of [navigation monitoring and interception](#navigation-monitoring-and-interception).
 
 ### Inspection of the app history list
 
@@ -221,6 +222,8 @@ The event object has several useful properties:
 - `fragmentTarget`: a DOM element or null, indicating the target of the current navigation, if the current navigation is a same-document [fragment navigation](https://html.spec.whatwg.org/#scroll-to-fragid) or [scroll to text fragment navigation](https://github.com/WICG/scroll-to-text-fragment). _TODO I don't this works for scroll to text fragment, which uses ranges, not elements. Maybe make this just a boolean._
 
 - `formData`: a [`FormData`](https://developer.mozilla.org/en-US/docs/Web/API/FormData) object containing form submission data, or `null` if the navigation is not a form submission.
+
+- `info`: any value passed by `appHistory.pushNewEntry({ url, state, navigateInfo })` or `appHistory.updateCurrentEntry({ url, state, navigateInfo })`, if the navigation was initiated by one of those methods and the `navigateInfo` option was supplied; otherwise, null. See [the example below](#example-using-navigateinfo) for more.
 
 Note that you can check if the navigation will be same-document via `event.destinationEntry.sameDocument`.
 
@@ -361,6 +364,58 @@ appHistory.addEventListener("navigate", e => {
 ```
 
 _TODO: it feels like this should be less disruptive than a cancel-and-perform-new-navigation; it's just a tweak to the outgoing navigation. Using the same code as the previous example feels wrong. Some brainstorming needed._
+
+#### Example: using `navigateInfo`
+
+As mentioned above, the `navigate` event has an `event.info` property containing data passed from `appHistory.pushNewEntry()` or `appHistory.updateCurrentEntry()`, when their caller uses the `navigateInfo` option. The intended use of this value is to convey transient information about this particular navigation, such as how it happened. In this way, it's different from the persistent `event.destinationEntry.state` property.
+
+One example of how this might be used is to trigger different single-page navigation renderings depending on how a certain route was reached. For example, consider a photo gallery app, where you can reach the same photo URL and state via various routes:
+
+- Clicking on it in a gallery view
+- Clicking "next" or "previous" when viewing another photo in the album
+- Etc.
+
+Each of these wants a different animation at navigate time. This information doesn't make sense to store in the persistent URL or history entry state, but it's still important to communicate from the rest of the application, into the router (i.e. `navigate` event handler). This could be done using code such as
+
+```js
+document.addEventListener("keydown", async e => {
+  if (e.key === "ArrowLeft" && hasPreviousPhoto()) {
+    await appHistory.pushNewEntry({ url: getPreviousPhotoURL(), navigateInfo: { via: "go-left" } });
+  }
+  if (e.key === "ArrowRight" && hasNextPhoto()) {
+    await appHistory.pushNewEntry({ url: getNextPhotoURL(), navigateInfo: { via: "go-right" } });
+  }
+});
+
+photoGallery.addEventListener("click", e => {
+  if (e.target.closest(".photo-thumbnail")) {
+    await appHistory.pushNewEntry({ url: getPhotoURL(e.target), navigateInfo: { via: "gallery", thumbnail: e.target } });
+  }
+});
+
+appHistory.addEventListener("navigate", e => {
+  if (isPhotoNavigation(e)) {
+    e.respondWith((async () => {
+      switch (e.info.?via) {
+        case "go-left": {
+          await animateLeft();
+          break;
+        }
+        case "go-right": {
+          await animateRight();
+          break;
+        }
+        case "gallery": {
+          await animateZoomFromThumbnail(e.info.thumbnail);
+          break;
+        }
+      }
+
+      // TODO: actually load the photo.
+    })());
+  }
+});
+```
 
 ### Navigations while a navigation is ongoing
 
@@ -793,6 +848,7 @@ interface AppHistoryEntry : EventTarget {
 dictionary AppHistoryEntryOptions {
   USVString url;
   any state;
+  any navigateInfo;
 };
 
 callback AppHistoryNavigationCallback = AppHistoryEntryOptions ();
@@ -806,13 +862,16 @@ interface AppHistoryNavigateEvent : Event {
   readonly attribute AppHistoryEntry destinationEntry;
   readonly attribute Element? fragmentTarget;
   readonly attribute FormData? formData;
+  readonly attribute any info;
 };
 
 dictionary AppHistoryNavigateEventInit : EventInit {
   boolean userInitiated = false;
   boolean sameOrigin = false;
   required AppHistoryEntry destinationEntry;
+  Element? fragmentTarget = null;
   FormData? formData = null;
+  any info = null;
 };
 
 [Exposed=Window]
