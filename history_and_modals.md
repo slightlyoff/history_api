@@ -81,7 +81,7 @@ The following are nice-to-have goals:
 
 The following is a goal we wish we could meet, but don't believe is possible to meet while also achieving our primary goals:
 
-- Avoid an awkward transition period, where the Android back button close modals on sites that adopt this new API, but navigates history on sites that haven't adopted it. In particular, right now users generally know the Android back button works fails to close modals in web apps and avoid it when modals are open; we worry about this API causing a state where users are no longer sure which action it performs.
+- Avoid an awkward transition period, where the Android back button close modals on sites that adopt this new API, but navigates history on sites that haven't adopted it. In particular, right now users generally know the Android back button fails to close modals in web apps and avoid it when modals are open; we worry about this API causing a state where users are no longer sure which action it performs.
 
 ## What developers are doing today
 
@@ -389,7 +389,7 @@ But on balance, we'd prefer to start with the transient user activation restrict
 
 The proposal here exposes `ModalCloseWatcher` as a primitive. However, watching for close signals is only a small part of what makes modals difficult. There is also [top layer interaction](https://github.com/whatwg/html/issues/4633), [blocking interaction with the main document](https://github.com/whatwg/html/issues/897) (including trapping focus within the modal while it is open), providing appropriate accessibility semantics, and determining the appropriate screen position.
 
-Instead of providing the individual building blocks for all of these pieces, it may be better to bundle them together into high-level semantic elements. We already have `<dialog>`; we could imagine others such as `<popup>`, `<toast>`, `<tooltip>`, etc. These would then bundle the appropriate features, e.g. while all of them would benefit from top layer interaction, `<toast>` and `<tooltip>` do not need to handle close signals.
+Instead of providing the individual building blocks for all of these pieces, it may be better to bundle them together into high-level semantic elements. We already have `<dialog>`; we could imagine others such as `<popup>`, `<toast>`, `<tooltip>`, etc. These would then bundle the appropriate features, e.g. while all of them would benefit from top layer interaction, `<toast>` and `<tooltip>` do not need to handle close signals. One such proposal in this area is the [`<popup>` explainer](https://github.com/MicrosoftEdge/MSEdgeExplainers/blob/main/Popup/explainer.md).
 
 This likely leads to a better and more uniform user experience. If developers use the correct high-level element, then they'll get the appropriate behavior, including close signal handling, for free. For example, not all developers realize that menus should respond to close signals. If we rely on them to hook up `ModalCloseWatcher` to their custom menu code, some developers might fail to do so. Whereas if modal close signal handling is automatic when using a `<popup type="menu">` element, it will just work.
 
@@ -401,9 +401,9 @@ The authors of this proposal find this alternative quite attractive, and welcome
 
 This feature has no security considerations to speak of, as a purely DOM API.
 
-Regarding privacy, this proposal should be slightly privacy-positive, as it masks platform-specific user interaction patterns behind a uniform cross-platform interface.
+Regarding privacy, this proposal does not expose any information that was not already available via other means, such as `keydown` listeners.
 
-TODO: W3C TAG security and privacy questionnaire.
+See the [W3C TAG Security and Privacy Questionnaire answers](./history_and_modals_spq.md) for more.
 
 ## Stakeholder feedback
 
