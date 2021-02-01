@@ -254,30 +254,23 @@ _TODO: should we give direct control over when the browser UI updates, in case d
 
 The `navigate` event's `event.respondWith()` method provides a helpful convenience for implementing single-page navigations, as discussed above. But beyond that, providing a direct signal to the browser as to the duration and outcome of a single-page navigation has wider ecosystem benefits in regards to metrics gathering.
 
-In particular, today it is not clear to the browser when a user interaction causes a single-page navigation, because of the app-specific JavaScript that intermediates between such interactions and the eventual call to `history.pushState()`/`history.replaceState()`. It is also unclear exactly when the navigation ends: e.g., some applications optimistically call `history.pushState()` before the content is loaded.
+In particular, today it is not clear to the browser when a user interaction causes a single-page navigation, because of the app-specific JavaScript that intermediates between such interactions and the eventual call to `history.pushState()`/`history.replaceState()`. In particular, it's unclear exactly when the navigation begins: trying to use the URL change as a signal doesn't work, since some applications wait to call `history.pushState()` until all the content is loaded.
 
 Using `respondWith()` solves these problems. It gives the browser clear insight into when a navigation is being handled as a single-page navigation, and the provided promise allows the browser to know how long the navigation takes, and whether or not it succeeds. We expect browsers to use these to update their own UI (including any loading indicators; see [whatwg/fetch#19](https://github.com/whatwg/fetch/issues/19) and [whatwg/html#330](https://github.com/whatwg/html/issues/330) for previous feature requests).
 
 Additionally, analytics frameworks would be able to consume this information from the browser in a way that works across all applications using the app history API. See the example in the [Current entry change monitoring](#current-entry-change-monitoring) section for one way this could look; other possibilities include integrating into the existing [performance APIs](https://w3c.github.io/performance-timeline/).
 
-This standardized notion of single-page navigations also gives a hook for other useful metrics to build off of. For example, you could imagine variants of the `"first-paint"` and `"first-contentful-paint"` APIs which are collected after the promise provided to `respondWith()` settles. Or, you could imagine vendor-specific or application-specific measurements like [Cumulative Layout Shift](https://web.dev/cls/) or React hydration time being reset after such navigations.
+This standardized notion of single-page navigations also gives a hook for other useful metrics to build off of. For example, you could imagine variants of the `"first-paint"` and `"first-contentful-paint"` APIs which are collected after the `navigate` event is fired. Or, you could imagine vendor-specific or application-specific measurements like [Cumulative Layout Shift](https://web.dev/cls/) or React hydration time being reset after such navigations begin.
 
-This isn't a complete panacea: in particular, metrics derived in such a way are potentially "gameable" using techniques such as
+This isn't a complete panacea: in particular, such metrics are gameable by bad actors. In particular, bad actors could try to drive down average measured "load time" by generating excessive `navigate` events that don't actually do anything. So in scenarios where the web application is less interested in measuring itself, and more interested in driving down specific metrics, those creating the metrics will need to take into account such misuse of the API. Some potential countermeasures against such gaming could include:
 
-```js
-event.respondWith(Promise.resolve());
-nowDoTheActualLoadingWork();
-```
-
-(which makes the navigation appear instant to the browser). Another potential way of driving down average measured "load time" would be by generating excessive `navigate` events that don't actually do anything. So in scenarios where the web application is less interested in measuring itself, and more interested in driving down specific metrics, those creating the metrics will need to take into account such misuse of the API. Some potential countermeasures against such gaming could include:
+- Only using the start time of the navigation in creating such metrics, and not using the promise-settling time. This avoids gaming via code such as `event.respondWith(Promise.resolve()); await doActualNavigation()` which makes the navigation appear instant to the browser.
 
 - Filtering to only count navigations where `event.userInitiated` is true.
 
 - Filtering to only count navigations where the URL changes (i.e., `appHistory.currentEntry.url !== event.destinationEntry.url`).
 
 - We hope that most analytics vendors will come to automatically track `navigate` events as page views, and measure their duration. Then, apps using such analytics vendors would have an incentive to keep their page view statistics meaningful, and thus be disincentivized to generate spurious navigations.
-
-- To the extent developers want to get the correct browser UI treatment for a navigation, including the loading spinner, they will need to pass a promise containing accurate timing and success/failure information to `respondWith()`. Gaming metrics by passing fake promises would lose this nice browser affordance.
 
 #### Example: replacing navigations with single-page app navigations
 
@@ -721,7 +714,6 @@ C. https://example.com/outer
 The user's back button, as well as the `history.back()` API, will navigate the joint session history back to (B). However, they will have no effect on the app history list; that will stay on (2). Pressing the back button or calling `history.back()` a second time would then move the joint session history back to (A), and the app history list back to (1).
 
 Finally, note that user agents can continue to refine their mapping of UI to joint session history to give a better experience. For example, in some cases user agents today have the back button skip joint session history entries which were created without user interaction. We expect this heuristic would continue to be applied for `appHistory.pushNewEntry()`, just like it is for today's `history.pushState()`.
-
 
 ## Security and privacy considerations
 
