@@ -641,7 +641,7 @@ Finally, note that `history.length` is highly non-interoperable today, in part d
 
 ### Watching for navigations
 
-Today there are two events related to navigations, `hashchange` and `popstate`, both on `Window`. These events are quite problematic and hard to use; see, for example, [whatwg/html#5562](https://github.com/whatwg/html/issues/5562) or other [open issues](https://github.com/whatwg/html/issues?q=is%3Aissue+is%3Aopen+popstate) for some discussion. MDN's fourteen-step guide to ["When popstate is sent"](https://github.com/whatwg/html/issues?q=is%3Aissue+is%3Aopen+popstate) is also indicative of the problem.
+Today there are two events related to navigations, `hashchange` and `popstate`, both on `Window`. These events are quite problematic and hard to use; see, for example, [whatwg/html#5562](https://github.com/whatwg/html/issues/5562) or other [open issues](https://github.com/whatwg/html/issues?q=is%3Aissue+is%3Aopen+popstate) for some discussion. MDN's fourteen-step guide to ["When popstate is sent"](https://developer.mozilla.org/en-us/docs/Web/API/Window/popstate_event#when_popstate_is_sent), which [doesn't even match any browsers](https://docs.google.com/document/d/1Pdve-DJ1JCGilj9Yqf5HxRJyBKSel5owgOvUJqTauwU/edit#), is also indicative of the problem.
 
 The app history API provides several replacements that subsume these events:
 
