@@ -684,7 +684,7 @@ _TODO: actually, we should probably expose scroll restoration mode, like `histor
 
 Finally, all the higher-level mechanisms of session history entry management, such as the interaction with navigation, continue to work as they did before; the correspondence to `AppHistoryEntry` APIs does not change the processing there.
 
-## Impact on back button and user agent UI
+## Impact on the back button and user agent UI
 
 The app history API doesn't change anything about how user agents implement their UI: it's really about developer-facing affordances. Users still care about the joint session history, and so that will continue to be presented in UI surfaces like holding down the back button. Similarly, pressing the back button will continue to navigate through the joint session history, potentially across origins and out of the current app history (into a new app history, on the new origin).
 
@@ -717,17 +717,25 @@ Finally, note that user agents can continue to refine their mapping of UI to joi
 
 ## Security and privacy considerations
 
-Privacy-wise, this feature is neutral, due to its strict same-origin contiguous entry scoping. That is, it only exposes information which the application already has access to, just in a more convenient form. The storage of state in the `AppHistoryEntry`'s `state` property is a convenience with no new privacy concerns, since that state is only accessible same-origin; that is, it provides the same power as something like `sessionStorage`.
+Privacy-wise, this feature is neutral, due to its strict same-origin contiguous entry scoping. That is, it only exposes information which the application already has access to, just in a more convenient form. The storage of state in the `AppHistoryEntry`'s `state` property is a convenience with no new privacy concerns, since that state is only accessible same-origin; that is, it provides the same power as something like `sessionStorage` or `history.state`.
 
-Security-wise, this feature does not touch on any security-sensitive areas of the browser or application code.
+One particular point of interest is the user-agent generated `appHistoryEntry.key` field, which is a user-agent-generated UUID. Here again the strict same-origin contiguous entry scoping prevents this from being used for cross-site tracking or similar. Specifically:
 
-_TODO: W3C TAG security and privacy questionnaire._
+- This key lives only for the duration of that app history entry, i.e. for the lifetime of the browsing session. For example, opening a new tab (or iframe) to the same URL will generate a different `key` value. So it is not a stable user-specific identifier.
+
+- This information is not accessible across sites, as a given app history entry is specific to a frame and origin. That is, cross-site pages will always have different `key` values for all `AppHistoryEntry`s they can examine; there is no way to use app history entry `key`s to correlate users.
+
+(Collaborating cross-origin same-site pages can inspect each other's `AppHistoryEntry`s using `document.domain`, but they can also inspect every other aspect of each others' global objects.)
+
+Security-wise, this feature has been carefully designed to give no new abilities that might be disruptive to the user or to delicate parts of browser code. See, for example, the restrictions on [navigation monitoring and interception](#navigation-monitoring-and-interception) to ensure that it is no more powerful than today's techniques, or the discussion of how this proposal [does not impact how browser UI presents session history](#impact-on-back-button-and-user-agent-ui).
+
+See also the [W3C TAG security and privacy questionnaire answers](./app_history_spq).
 
 ## Stakeholder feedback
 
 - W3C TAG: TODO file for TAG early design review
 - Browser engines:
-  - Chromium: No feedback so far
+  - Chromium: Excited about the design space; has not yet investigated implementation implications in depth.
   - Gecko: No feedback so far
   - WebKit: No feedback so far
 - Web developers: TODO
@@ -739,7 +747,8 @@ This proposal is based on [an earlier revision](https://github.com/slightlyoff/h
 Thanks also to
 [@chrishtr](https://github.com/chrishtr),
 [@dvoytenko](https://github.com/dvoytenko),
-[@housseindjirdeh](https://github.com/housseindjirdeh), and
+[@housseindjirdeh](https://github.com/housseindjirdeh),
+[@jakearchibald](https://github.com/jakearchibald), and
 [@slightlyoff](https://github.com/slightlyoff)
 for their help in exploring this space and providing feedback.
 
