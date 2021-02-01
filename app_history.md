@@ -434,7 +434,7 @@ document.querySelector("#next").onclick = async () => {
 
 Although not shown in the above example, the callback could also return a `state` value.
 
-_TODO: should the callback be able to say "nevermind, I don't care anymore, please don't navigate"? We could let the *caller* do that by passing an `AbortSignal` after the callback... And the general *app* can do it using `upcomingnavigate`..._
+_TODO: should the callback be able to say "nevermind, I don't care anymore, please don't navigate"? We could let the *caller* do that by passing an `AbortSignal` after the callback... And the general *app* can do it using `upcomingnavigate`... Maybe throwing an exception??_
 
 In general, the idea of these callback variants is that there are cases where the new URL or state is not determined synchronously, and is a function of the current state of the world at the time the navigation is ready to be performed.
 
@@ -512,7 +512,7 @@ appHistory.addEventListener("currententrychange", e => {
 
 _TODO: could we populate this for cross-document navigations too? Then it kind of overlaps with existing timing APIs, and is probably a lot harder to implement..._
 
-_TODO: Add a non-analytics examples._
+_TODO: Add a non-analytics examples, similar to how people use `popstate` today._
 
 ### Complete event sequence
 
