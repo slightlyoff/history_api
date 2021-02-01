@@ -826,6 +826,8 @@ interface AppHistoryUpcomingNavigateEvent : Event {
 dictionary AppHistoryUpcomingNavigateEventInit : EventInit {
   required AppHistoryEntry upcomingEntry;
   required AppHistoryEntry ongoingEntry;
+
+  undefined discardUpcoming();
 };
 
 [Exposed=Window]
