@@ -567,7 +567,10 @@ appHistory.addEventListener("currententrychange", e => {
 
 _TODO: could we populate this for cross-document navigations too? Then it kind of overlaps with existing timing APIs, and is probably a lot harder to implement..._
 
-_TODO: Add a non-analytics examples, similar to how people use `popstate` today._
+Some other examples of `currententrychange` may include:
+- change the page/content being shown based on the newly accepted location
+  - especially for handling browser-back
+- show side-bar content relevant to the current page (e.g. help items in the current page, etc)
 
 ### Complete event sequence
 
