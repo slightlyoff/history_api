@@ -215,11 +215,11 @@ We have previously considered (in private docs) a more fullsome rewrite of the h
 
 It's possible control the responses for a document's content inside a Service Worker, and there are [proposals](https://github.com/WICG/sw-launch) for handling some subset of navigation disposition (new window? new tab? re-use?) from within that context. These aren't particularly satisfying from both a performance and programmability perspecitve. Service Workers may be shut down and would need to be restarted to handle decisions about if/how to navigate. They also lack data to most DOM data, including form information, making it complex to offload enough state to them to make decisions. It also isn't clear that it's good layering to invoke them here.
 
-As a final reason not to go this route, Service Workers install asynchronously and may not be available in time to catch some navigations. The proposed deisgn does not have this problem.
+As a final reason not to go this route, Service Workers install asynchronously and may not be available in time to catch some navigations. The proposed design does not have this problem.
 
 ### Built-in Client-Side Routing
 
-A new type of link could explicitly invoke client side routing, or we could imagine a more maximal route-pre-definition system inside the document to tell the system to "skip" full navigations to specific routes. This somewhat-more-declaraitve approach could give the UA a larger role in helping users decide what they want an app to do at the limit, however we don't have concrete need for this at the moment and such a system could be layered on later without much concern.
+A new type of link could explicitly invoke client side routing, or we could imagine a more maximal route-pre-definition system inside the document to tell the system to "skip" full navigations to specific routes. This somewhat-more-declarative approach could give the UA a larger role in helping users decide what they want an app to do at the limit, however we don't have concrete need for this at the moment and such a system could be layered on later without much concern.
 
 ## Open Design Questions
 
