@@ -1,4 +1,4 @@
-# Modal Close Signals: Security and Privacy Questionnaire Answers
+# Close Signals: Security and Privacy Questionnaire Answers
 
 The following are the answers to the W3C TAG's [security and privacy self-review questionnaire](https://w3ctag.github.io/security-questionnaire/).
 
@@ -24,7 +24,7 @@ No.
 
 **Do the features in your specification expose information about the underlying platform to origins?**
 
-To a small extent. In theory, by correlating signals from `ModalCloseWatcher` with other signals (e.g. `keypress` events), one could try to determine what a platform's modal close signal is, and thus roughly into what "bucket" (desktop or not) the user falls. Such determination is fragile and coarse.
+To a small extent. In theory, by correlating signals from `CloseWatcher` with other signals (e.g. `keypress` events), one could try to determine what a platform's modal close signal is, and thus roughly into what "bucket" (desktop or not) the user falls. Such determination is fragile and coarse.
 
 **Do features in this specification allow an origin access to sensors on a user’s device?**
 
