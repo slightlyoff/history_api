@@ -46,7 +46,7 @@ Various UI components have a "modal" or "popup" behavior. For example:
 
 An important common feature of these components is that they are designed to be easy to close, with a uniform interaction mechanism for doing so. Typically, this is the <kbd>Esc</kbd> key on desktop platforms, and the back button on some mobile platforms (notably Android). Game consoles also tend to use a specific button as their "close/cancel/back" button. Finally, accessibility technology sometimes provides specific close signals for their users, e.g. iOS VoiceOver's "dismiss an alert or return to the previous screen" [gesture](https://support.apple.com/guide/iphone/learn-voiceover-gestures-iph3e2e2281/ios#:~:text=Dismiss%20an%20alert%20or%20return%20to%20the%20previous%20screen).
 
-We define a **cancel signal** as a _platform-mediated_ interaction that's intended to close an in-page component. This is distinct from _page-mediated_ interactions, such as clicking on an "x" or "Done" button, or clicking on the backdrop outside of the modal.
+We define a **close signal** as a _platform-mediated_ interaction that's intended to close an in-page component. This is distinct from _page-mediated_ interactions, such as clicking on an "x" or "Done" button, or clicking on the backdrop outside of the modal.
 
 Currently, web developers have no good way to handle these close signals. This is especially problematic on Android devices, where the back button is the traditional close signal. Imagine a user filling in a twenty-field form, with the last item being a custom date picker modal. The user might click the back button hoping to close the date picker, like they would in a native app. But instead, the back button navigates the web page's history tree, likely closing the whole form and losing the filled information. But the problem of how to handle close signals extends across all operating systems; implementing a good experience for users of different browsers, platforms, and accessibility technologies requires a lot of user agent sniffing today.
 
@@ -200,7 +200,7 @@ Additionally, we note that the Apple Human Interface Guidelines [indicate](https
 
 ### Abuse analysis
 
-As discussed [above](#user-activation-gating), for platforms like Android where the modal close gesture is to use the back button, we need to prevent abuse that traps the user on a page by effectively disabling their back button. The user activation gating is intended to combat that. Notably, that protection is already stronger than anything done today for the `history.pushState()` API, which is another means by which apps can attempt to trap the user on the page. [See discussion below](#not-gating-on-transient-user-activation) for more on that.
+As discussed [above](#user-activation-gating), for platforms like Android where the close signal is to use the back button, we need to prevent abuse that traps the user on a page by effectively disabling their back button. The user activation gating is intended to combat that. Notably, that protection is already stronger than anything done today for the `history.pushState()` API, which is another means by which apps can attempt to trap the user on the page. [See discussion below](#not-gating-on-transient-user-activation) for more on that.
 
 Additionally, we note that in most back button UIs, the user always has an escape hatch of holding down the back button and explicitly choosing a history step to navigate back to. This is never a close signal.
 
